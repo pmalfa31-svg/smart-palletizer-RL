@@ -95,23 +95,33 @@ public:
     }
     
     std::tuple<std::vector<float>, float, bool> step(std::vector<float> azione) {
-        // LA MAGIA: facciamo avanzare il tempo nel motore fisico di 1/60 di secondo
+        // 1. "Svegliamo" l'oggetto. Bullet disattiva gli oggetti per risparmiare 
+        // CPU se pensa che siano fermi. Dobbiamo assicurarci che sia attivo!
+        paccoBody->activate(true);
+
+        // 2. Trasformiamo l'input di Python in una forza fisica (Moltiplichiamo x 10 per renderla visibile)
+        // azione[0] controllerà l'asse X (destra/sinistra), azione[1] l'asse Z (avanti/indietro)
+        btVector3 spinta(azione[0] * 10.0f, 0.0f, azione[1] * 10.0f);
+        
+        // 3. Applichiamo la forza al centro del pacco
+        paccoBody->applyCentralForce(spinta);
+
+        // 4. Facciamo avanzare il tempo di un fotogramma (1/60 di secondo)
         dynamicsWorld->stepSimulation(1.0f / 60.0f, 10);
 
-        // Leggiamo dove si trova il pacco dopo questo step di tempo
+        // 5. Leggiamo la nuova posizione
         btTransform trans;
         paccoBody->getMotionState()->getWorldTransform(trans);
+        
+        float pos_x = trans.getOrigin().getX();
         float altezza_y = trans.getOrigin().getY();
+        float pos_z = trans.getOrigin().getZ();
 
-        std::vector<float> nuovo_stato = {
-            (float)trans.getOrigin().getX(), 
-            altezza_y, 
-            (float)trans.getOrigin().getZ()
-        };
+        std::vector<float> nuovo_stato = {pos_x, altezza_y, pos_z};
 
-        // Calcoliamo se l'episodio è finito (se il centro del pacco scende a 0.5, significa che tocca terra a Y=0)
+        // Calcoliamo se ha toccato terra
         bool done = (altezza_y <= 0.501f);
-        float reward = done ? 10.0f : 0.0f; // Diamo una reward quando tocca terra (solo per prova)
+        float reward = done ? 10.0f : 0.0f;
 
         return std::make_tuple(nuovo_stato, reward, done);
     }
