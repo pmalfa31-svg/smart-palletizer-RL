@@ -11,7 +11,7 @@ class PalletizerEnv(gym.Env):
         # ACTIONS (3): [Vel_Spalla, Vel_Gomito, Interruttore_Ventosa]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
         
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
         
         # IL TIMER DELLA VITA
         self.current_step = 0

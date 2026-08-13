@@ -2,24 +2,16 @@
 
 ConveyorBelt::ConveyorBelt(btDiscreteDynamicsWorld* dynamicsWorld, float startX, float startY, float startZ) {
     world = dynamicsWorld;
+    beltSpeed = -0.5f; // Velocità negativa: spinge verso il robot (X=0)
 
-    // Dimensions: 2 meters long, 0.2m thick, 0.5m wide
     btCollisionShape* shape = new btBoxShape(btVector3(2.0f, 0.1f, 0.25f)); 
-    
     btTransform transform;
     transform.setIdentity();
     transform.setOrigin(btVector3(startX, startY, startZ)); 
-    
     btDefaultMotionState* motionState = new btDefaultMotionState(transform);
-    
-    // Mass 0 means it's a static object (kinematic)
     btRigidBody::btRigidBodyConstructionInfo rbInfo(0.0f, motionState, shape, btVector3(0,0,0));
-    
     body = new btRigidBody(rbInfo);
-    
-    // Add some friction so packages don't slide off uncontrollably
     body->setFriction(0.8f); 
-    
     world->addRigidBody(body);
 }
 
@@ -28,4 +20,20 @@ ConveyorBelt::~ConveyorBelt() {
     delete body->getMotionState();
     delete body->getCollisionShape();
     delete body;
+}
+
+void ConveyorBelt::setSpeed(float speed) { beltSpeed = speed; }
+
+void ConveyorBelt::update(Package* targetBox) {
+    btRigidBody* boxBody = targetBox->getBody();
+    btTransform trans;
+    boxBody->getMotionState()->getWorldTransform(trans);
+    float boxY = trans.getOrigin().getY();
+
+    // Se il pacco è fisicamente appoggiato sul nastro
+    if (boxY < 0.2f) {
+        btVector3 currentVel = boxBody->getLinearVelocity();
+        // Override della sola velocità sull'asse X per simulare lo scorrimento
+        boxBody->setLinearVelocity(btVector3(beltSpeed, currentVel.getY(), currentVel.getZ()));
+    }
 }

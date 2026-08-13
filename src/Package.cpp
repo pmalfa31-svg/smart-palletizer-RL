@@ -9,7 +9,7 @@ Package::Package(btDiscreteDynamicsWorld* dynamicsWorld, float startX, float sta
     transform.setIdentity();
     transform.setOrigin(startPos);
     
-    btScalar mass(1.0f); // 1kg for now, can be parameterized later
+    btScalar mass(1.0f); 
     btVector3 inertia(0, 0, 0);
     shape->calculateLocalInertia(mass, inertia);
     
@@ -17,6 +17,8 @@ Package::Package(btDiscreteDynamicsWorld* dynamicsWorld, float startX, float sta
     btRigidBody::btRigidBodyConstructionInfo rbInfo(mass, motionState, shape, inertia);
     
     body = new btRigidBody(rbInfo);
+
+    body->setActivationState(DISABLE_DEACTIVATION);
     world->addRigidBody(body);
 }
 
@@ -27,7 +29,8 @@ Package::~Package() {
     delete body;
 }
 
-void Package::resetPosition() {
+void Package::resetPosition(float newX, float newY, float newZ) {
+    startPos = btVector3(newX, newY, newZ);
     btTransform transform;
     transform.setIdentity();
     transform.setOrigin(startPos);
@@ -50,6 +53,4 @@ float Package::getY() {
     return trans.getOrigin().getY();
 }
 
-btRigidBody* Package::getBody() {
-    return body;
-}
+btRigidBody* Package::getBody() { return body; }

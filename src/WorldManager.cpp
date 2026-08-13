@@ -20,15 +20,13 @@ private:
     btDiscreteDynamicsWorld* dynamicsWorld;
     
     btRigidBody* floorBody;
-    
-    // I NOSTRI COMPONENTI MODULARI
     RoboticArm* mainArm;
     Package* dynamicBox;
     ConveyorBelt* feedBelt;
 
 public:
     AmbienteRobot() {
-        std::cout << "[C++] Initializing Phase 5: Modular OOP Architecture..." << std::endl;
+        std::cout << "[C++] Initializing Phase 6: Dynamic Conveyor Belt..." << std::endl;
 
         collisionConfig = new btDefaultCollisionConfiguration();
         dispatcher = new btCollisionDispatcher(collisionConfig);
@@ -37,7 +35,6 @@ public:
         dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfig);
         dynamicsWorld->setGravity(btVector3(0, -9.81, 0));
 
-        // 1. FLOOR (L'unico pezzo statico rimasto qui)
         btCollisionShape* floorShape = new btBoxShape(btVector3(50.0f, 0.5f, 50.0f)); 
         btTransform floorTransform;
         floorTransform.setIdentity();
@@ -47,9 +44,9 @@ public:
         floorBody = new btRigidBody(rbInfoFloor);
         dynamicsWorld->addRigidBody(floorBody);
 
-        // 2. ISTANZIAZIONE DEI COMPONENTI
         mainArm = new RoboticArm(dynamicsWorld);
-        dynamicBox = new Package(dynamicsWorld, 1.0f, 0.15f, 0.0f);
+        // SPAWN LONTANO: a 2 metri di distanza lungo l'asse X
+        dynamicBox = new Package(dynamicsWorld, 2.0f, 0.15f, 0.0f);
         feedBelt = new ConveyorBelt(dynamicsWorld, 1.5f, -0.1f, 0.0f);
     }
 
@@ -57,12 +54,10 @@ public:
         delete mainArm;
         delete dynamicBox;
         delete feedBelt;
-
         dynamicsWorld->removeRigidBody(floorBody);
         delete floorBody->getMotionState();
         delete floorBody->getCollisionShape();
         delete floorBody;
-
         delete dynamicsWorld;
         delete solver;
         delete overlappingPairCache;
@@ -71,15 +66,15 @@ public:
     }
     
     std::vector<float> reset() {
-        dynamicBox->resetPosition();
+        // Il pacco riparte da 2 metri
+        dynamicBox->resetPosition(2.0f, 0.15f, 0.0f);
         mainArm->reset();
         
         return {
-            mainArm->getShoulderAngle(), 
-            mainArm->getElbowAngle(),
+            mainArm->getShoulderAngle(), mainArm->getElbowAngle(),
             0.0f, 0.0f,
-            dynamicBox->getX(), 
-            dynamicBox->getY(),
+            dynamicBox->getX(), dynamicBox->getY(),
+            0.0f,
             0.0f
         };
     }
@@ -90,18 +85,23 @@ public:
         bool grip_command = (action[2] > 0.0f);
 
         mainArm->applyMotorVelocities(velSpalla, velGomito);
-        dynamicsWorld->stepSimulation(1.0f / 60.0f, 10);
         
+        bool isHoldingPrima = mainArm->isHolding();
+        
+        // AGGIORNAMENTO FISICA DINAMICA: se non lo stiamo tenendo, il nastro lo sposta
+        if (!isHoldingPrima) {
+            feedBelt->update(dynamicBox);
+        }
+
+        dynamicsWorld->stepSimulation(1.0f / 60.0f, 10);
         mainArm->handleVacuum(grip_command, dynamicBox);
 
-        // CALCOLO DISTANZA
         float eeX = mainArm->getEndEffectorX();
         float eeY = mainArm->getEndEffectorY();
         float boxX = dynamicBox->getX();
         float boxY = dynamicBox->getY();
         float dist_to_box = std::sqrt(std::pow(eeX - boxX, 2) + std::pow(eeY - boxY, 2));
 
-        // REWARD SHAPING
         float reward = 0.0f;
         bool done = false; 
         bool isHolding = mainArm->isHolding();
@@ -112,21 +112,29 @@ public:
             reward = 5.0f; 
         }
 
+        // CONDIZIONI DI VITTORIA E SCONFITTA
         if (boxY > 1.0f) {
             reward += 2000.0f; 
             done = true;      
         } else if (eeY < 0.1f) {
-            reward -= 2000.0f; 
+            reward -= 2000.0f; // Scontro a terra
             done = true;      
+        } else if (boxX < -0.2f && !isHolding) {
+            // IL PACCO E' CADUTO DAL NASTRO! Ha superato il robot.
+            reward -= 2000.0f;
+            done = true;
         }
 
+        // ... (resto del codice sopra invariato)
+        
+        // ESTRAIAMO LA VELOCITA' DEL PACCO
+        float boxVX = dynamicBox->getBody()->getLinearVelocity().getX();
+
         std::vector<float> state = {
-            mainArm->getShoulderAngle(), 
-            mainArm->getElbowAngle(),
-            velSpalla, 
-            velGomito,
-            boxX, 
-            boxY,
+            mainArm->getShoulderAngle(), mainArm->getElbowAngle(),
+            velSpalla, velGomito,
+            boxX, boxY, 
+            boxVX, // <--- IL NUOVO SENSO: VELOCITA' ASSE X
             isHolding ? 1.0f : 0.0f
         };
 

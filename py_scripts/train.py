@@ -9,8 +9,8 @@ print("\n--- 2. Addestramento IA (Tabula Rasa) ---")
 model = PPO("MlpPolicy", env, verbose=1)
 model.learn(total_timesteps=500000)
 
-model.save("py_scripts/cervello_braccio_v7_oop")
-print("\n[OK] Cervello 'cervello_braccio_v7_oop.zip' salvato!")
+model.save("py_scripts/cervello_braccio_v8_dynamic")
+print("\n[OK] Cervello 'cervello_braccio_v8_dynamic.zip' salvato!")
 
 print("\n--- 3. Test Finale: Grasping OOP ---")
 obs, info = env.reset()

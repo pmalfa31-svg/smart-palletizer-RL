@@ -11,7 +11,7 @@ public:
     Package(btDiscreteDynamicsWorld* dynamicsWorld, float startX, float startY, float startZ);
     ~Package();
 
-    void resetPosition();
+    void resetPosition(float newX, float newY, float newZ);
     float getX();
     float getY();
     btRigidBody* getBody();
