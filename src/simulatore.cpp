@@ -203,6 +203,7 @@ public:
     std::tuple<std::vector<float>, float, bool> step(std::vector<float> action) {
         float velSpalla = action[0] * 3.0f;
         float velGomito = action[1] * 3.0f;
+        bool grip_command = (action[2] > 0.0f); // IL RITORNO DEL CONTROLLO MANUALE
 
         shoulderJoint->setMotorTargetVelocity(velSpalla);
         elbowJoint->setMotorTargetVelocity(velGomito);
@@ -223,16 +224,21 @@ public:
 
         float dist_to_box = std::sqrt(std::pow(eeX - boxX, 2) + std::pow(eeY - boxY, 2));
 
-        // VACUUM LOGIC (AUTO-GRIP)
-        if (!vacuumConstraint && dist_to_box < 0.4f) {
+        // VACUUM LOGIC (MANUALE E DI PRECISIONE)
+        if (grip_command && !vacuumConstraint && dist_to_box < 0.2f) { // Tolleranza ridotta a 20cm
             btTransform frameInA = forearmBody->getWorldTransform().inverse() * dynamicBoxBody->getWorldTransform();
             btTransform frameInB;
             frameInB.setIdentity();
             vacuumConstraint = new btFixedConstraint(*forearmBody, *dynamicBoxBody, frameInA, frameInB);
             dynamicsWorld->addConstraint(vacuumConstraint, true);
-        } 
+        } else if (!grip_command && vacuumConstraint) {
+            // Se l'IA spegne l'interruttore, il pacco cade
+            dynamicsWorld->removeConstraint(vacuumConstraint);
+            delete vacuumConstraint;
+            vacuumConstraint = nullptr;
+        }
 
-        // REWARD SHAPING & TERMINATION CONDITIONS
+        // REWARD SHAPING & TERMINATION CONDITIONS (Invariato, ora è perfetto)
         float reward = 0.0f;
         bool done = false; 
         bool isHolding = (vacuumConstraint != nullptr);
@@ -240,16 +246,15 @@ public:
         if (!isHolding) {
             reward = -dist_to_box; 
         } else {
-            reward = 5.0f; // Small constant reward for holding it
+            reward = 5.0f; 
         }
 
-        // GAME OVER AND LEVEL CLEAR
         if (boxY > 1.0f) {
-            reward += 2000.0f; // JACKPOT! Lifted the box
-            done = true;      // LEVEL CLEAR
+            reward += 2000.0f; 
+            done = true;      
         } else if (eeY < 0.1f) {
-            reward -= 2000.0f;  // CRASH! Hit the floor
-            done = true;      // GAME OVER
+            reward -= 2000.0f; 
+            done = true;      
         }
 
         std::vector<float> state = {

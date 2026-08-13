@@ -8,7 +8,9 @@ class PalletizerEnv(gym.Env):
         super(PalletizerEnv, self).__init__()
         self.sim = mio_simulatore.AmbienteRobot()
         
-        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        # ACTIONS (3): [Vel_Spalla, Vel_Gomito, Interruttore_Ventosa]
+        self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
+        
         self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32)
         
         # IL TIMER DELLA VITA
