@@ -5,42 +5,24 @@ import mio_simulatore
 
 class PalletizerEnv(gym.Env):
     def __init__(self):
-        super().__init__()
-        # Inizializziamo il nostro "motore" C++
+        super(PalletizerEnv, self).__init__()
         self.sim = mio_simulatore.AmbienteRobot()
         
-        # 1. ACTION SPACE: Definiamo le forze che l'IA può applicare [Forza_X, Forza_Z]
-        # Diciamo all'IA che può applicare un valore continuo tra -10.0 e +10.0
+        # ACTION SPACE: 2 motori (Spalla e Gomito)
+        # La rete neurale sputerà fuori 2 numeri compresi tra -1.0 e 1.0.
+        # (Il C++ poi li moltiplica per 2.0 per ottenere i radianti al secondo reali)
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
         
-        # 2. OBSERVATION SPACE: Quello che l'IA "vede" [X, Y, Z]
-        # Valori che vanno da -infinito a +infinito
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(3,), dtype=np.float32)
+        # OBSERVATION SPACE: 4 sensori
+        # [angolo_spalla, angolo_gomito, velocità_spalla, velocità_gomito]
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32)
 
     def reset(self, seed=None, options=None):
-        # Gymnasium richiede questa struttura standard per il reset
         super().reset(seed=seed)
-        
-        # Chiamiamo la funzione reset() che abbiamo scritto in C++
-        stato_iniziale = self.sim.reset()
-        
-        # Convertiamo la lista del C++ in un array NumPy (lo standard per l'IA)
-        osservazione = np.array(stato_iniziale, dtype=np.float32)
-        info = {} # Dizionario vuoto per informazioni extra
-        
-        return osservazione, info
+        stato = self.sim.reset()
+        return np.array(stato, dtype=np.float32), {}
 
     def step(self, action):
-        # L'IA ci passa un array NumPy, noi lo convertiamo in lista per il C++
-        azione_lista = action.tolist()
-        
-        # Facciamo calcolare la fisica al C++
-        stato, reward, done = self.sim.step(azione_lista)
-        
-        # Prepariamo i valori per Gymnasium
-        osservazione = np.array(stato, dtype=np.float32)
-        terminated = done       # L'episodio finisce (il pacco tocca terra)
-        truncated = False       # Serve per i limiti di tempo (per ora non lo usiamo)
-        info = {}
-        
-        return osservazione, reward, terminated, truncated, info
+        stato, reward, done = self.sim.step(action.tolist())
+        truncated = False 
+        return np.array(stato, dtype=np.float32), float(reward), done, truncated, {}

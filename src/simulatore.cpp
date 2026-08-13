@@ -2,7 +2,6 @@
 #include <pybind11/stl.h>
 #include <iostream>
 #include <vector>
-#include <random> // Required for randomization
 #include <btBulletDynamicsCommon.h>
 
 namespace py = pybind11;
@@ -16,30 +15,28 @@ private:
     btDiscreteDynamicsWorld* dynamicsWorld;
     
     btRigidBody* floorBody;
-    btRigidBody* palletBody;
-    btRigidBody* staticBoxBody;
-    btRigidBody* dynamicBoxBody;
+    btRigidBody* basePillarBody;
+    btRigidBody* bicepBody;
+    btRigidBody* forearmBody;
+    
+    // I nostri giunti robotici!
+    btHingeConstraint* shoulderJoint;
+    btHingeConstraint* elbowJoint;
 
-    // Random Number Generator for initial positions
-    std::mt19937 rng;
-    std::uniform_real_distribution<float> pos_distribution;
+
 
 public:
     AmbienteRobot() {
-        std::cout << "[C++] Initializing Phase 2: Spatial Randomization..." << std::endl;
-
-        // Initialize the random generator for coordinates between -2.0m and 2.0m
-        rng.seed(std::random_device{}());
-        pos_distribution = std::uniform_real_distribution<float>(-0.5f, 0.5f);
+        std::cout << "[C++] Inizializzazione Fase 3: Braccio Articolato Verticale..." << std::endl;
 
         collisionConfig = new btDefaultCollisionConfiguration();
         dispatcher = new btCollisionDispatcher(collisionConfig);
         overlappingPairCache = new btDbvtBroadphase();
         solver = new btSequentialImpulseConstraintSolver;
         dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfig);
-        dynamicsWorld->setGravity(btVector3(0, -9.81, 0));
+        dynamicsWorld->setGravity(btVector3(0, -9.81, 0)); // La gravità ora è il nemico n.1
 
-        // 1. FLOOR
+        // 1. PAVIMENTO
         btCollisionShape* floorShape = new btBoxShape(btVector3(50.0f, 0.5f, 50.0f)); 
         btTransform floorTransform;
         floorTransform.setIdentity();
@@ -49,57 +46,84 @@ public:
         floorBody = new btRigidBody(rbInfoFloor);
         dynamicsWorld->addRigidBody(floorBody);
 
-        // 2. EUROPALLET
-        btCollisionShape* palletShape = new btBoxShape(btVector3(0.6f, 0.075f, 0.4f)); 
-        btTransform palletTransform;
-        palletTransform.setIdentity();
-        palletTransform.setOrigin(btVector3(0.0f, 0.075f, 0.0f)); 
-        btDefaultMotionState* palletMotionState = new btDefaultMotionState(palletTransform);
-        btRigidBody::btRigidBodyConstructionInfo rbInfoPallet(0.0f, palletMotionState, palletShape, btVector3(0,0,0));
-        palletBody = new btRigidBody(rbInfoPallet);
-        dynamicsWorld->addRigidBody(palletBody);
+        // 2. PILASTRO DI BASE (Statico, massa 0)
+        btCollisionShape* baseShape = new btBoxShape(btVector3(0.2f, 0.5f, 0.2f)); 
+        btTransform baseTransform;
+        baseTransform.setIdentity();
+        baseTransform.setOrigin(btVector3(0.0f, 0.5f, 0.0f));
+        btDefaultMotionState* baseMotionState = new btDefaultMotionState(baseTransform);
+        btRigidBody::btRigidBodyConstructionInfo rbInfoBase(0.0f, baseMotionState, baseShape, btVector3(0,0,0));
+        basePillarBody = new btRigidBody(rbInfoBase);
+        dynamicsWorld->addRigidBody(basePillarBody);
 
-        // 3. STATIC BOX (Target)
-        btCollisionShape* staticBoxShape = new btBoxShape(btVector3(0.2f, 0.1f, 0.15f)); 
-        btTransform staticBoxTransform;
-        staticBoxTransform.setIdentity();
-        staticBoxTransform.setOrigin(btVector3(0.0f, 0.25f, 0.0f)); 
-        btDefaultMotionState* staticBoxMotionState = new btDefaultMotionState(staticBoxTransform);
-        btRigidBody::btRigidBodyConstructionInfo rbInfoStaticBox(0.0f, staticBoxMotionState, staticBoxShape, btVector3(0,0,0));
-        staticBoxBody = new btRigidBody(rbInfoStaticBox);
-        dynamicsWorld->addRigidBody(staticBoxBody);
+        // 3. BICIPITE (Braccio 1, Dinamico, massa 2.0)
+        btCollisionShape* bicepShape = new btBoxShape(btVector3(0.1f, 0.5f, 0.1f));
+        btTransform bicepTransform;
+        bicepTransform.setIdentity();
+        bicepTransform.setOrigin(btVector3(0.0f, 1.5f, 0.0f)); // Posizionato in piedi sopra il pilastro
+        
+        btScalar bicepMass(2.0f);
+        btVector3 bicepInertia(0, 0, 0);
+        bicepShape->calculateLocalInertia(bicepMass, bicepInertia);
+        btDefaultMotionState* bicepMotionState = new btDefaultMotionState(bicepTransform);
+        btRigidBody::btRigidBodyConstructionInfo rbInfoBicep(bicepMass, bicepMotionState, bicepShape, bicepInertia);
+        bicepBody = new btRigidBody(rbInfoBicep);
+        dynamicsWorld->addRigidBody(bicepBody);
 
-        // 4. DYNAMIC BOX (Agent)
-        btCollisionShape* dynamicBoxShape = new btBoxShape(btVector3(0.2f, 0.1f, 0.15f)); 
-        btTransform dynamicBoxTransform;
-        dynamicBoxTransform.setIdentity();
-        dynamicBoxTransform.setOrigin(btVector3(0, 5.0f, 0)); 
+        // 4. AVAMBRACCIO (Braccio 2, Dinamico, massa 1.5)
+        btCollisionShape* forearmShape = new btBoxShape(btVector3(0.08f, 0.5f, 0.08f));
+        btTransform forearmTransform;
+        forearmTransform.setIdentity();
+        forearmTransform.setOrigin(btVector3(0.0f, 2.5f, 0.0f)); // Posizionato in piedi sopra il bicipite
         
-        btScalar boxMass(5.0f);
-        btVector3 boxInertia(0, 0, 0);
-        dynamicBoxShape->calculateLocalInertia(boxMass, boxInertia);
+        btScalar forearmMass(1.5f);
+        btVector3 forearmInertia(0, 0, 0);
+        forearmShape->calculateLocalInertia(forearmMass, forearmInertia);
+        btDefaultMotionState* forearmMotionState = new btDefaultMotionState(forearmTransform);
+        btRigidBody::btRigidBodyConstructionInfo rbInfoForearm(forearmMass, forearmMotionState, forearmShape, forearmInertia);
+        forearmBody = new btRigidBody(rbInfoForearm);
+        dynamicsWorld->addRigidBody(forearmBody);
+
+        // --- GIUNTI E MOTORI ---
         
-        btDefaultMotionState* dynamicBoxMotionState = new btDefaultMotionState(dynamicBoxTransform);
-        btRigidBody::btRigidBodyConstructionInfo rbInfoDynamicBox(boxMass, dynamicBoxMotionState, dynamicBoxShape, boxInertia);
-        dynamicBoxBody = new btRigidBody(rbInfoDynamicBox);
-        dynamicsWorld->addRigidBody(dynamicBoxBody);
+        // A. SPALLA (Asse Z per rotazione verticale planare)
+        btVector3 axisZ(0, 0, 1);
+        btVector3 pivotInBase(0, 0.5f, 0);     // Aggancio: Cima del pilastro
+        btVector3 pivotInBicep(0, -0.5f, 0);   // Aggancio: Fondo del bicipite
+        
+        shoulderJoint = new btHingeConstraint(*basePillarBody, *bicepBody, pivotInBase, pivotInBicep, axisZ, axisZ);
+        shoulderJoint->enableAngularMotor(true, 0.0f, 150.0f); // Motore acceso! Max Torque 150
+        dynamicsWorld->addConstraint(shoulderJoint, true);
+
+        // B. GOMITO (Asse Z)
+        btVector3 pivotInBicepTop(0, 0.5f, 0);       // Aggancio: Cima del bicipite
+        btVector3 pivotInForearmBottom(0, -0.5f, 0); // Aggancio: Fondo dell'avambraccio
+        
+        elbowJoint = new btHingeConstraint(*bicepBody, *forearmBody, pivotInBicepTop, pivotInForearmBottom, axisZ, axisZ);
+        elbowJoint->enableAngularMotor(true, 0.0f, 100.0f); // Motore acceso! Max Torque 100
+        dynamicsWorld->addConstraint(elbowJoint, true);
     }
 
     ~AmbienteRobot() {
-        dynamicsWorld->removeRigidBody(dynamicBoxBody);
-        delete dynamicBoxBody->getMotionState();
-        delete dynamicBoxBody->getCollisionShape();
-        delete dynamicBoxBody;
+        dynamicsWorld->removeConstraint(elbowJoint);
+        delete elbowJoint;
+        dynamicsWorld->removeConstraint(shoulderJoint);
+        delete shoulderJoint;
 
-        dynamicsWorld->removeRigidBody(staticBoxBody);
-        delete staticBoxBody->getMotionState();
-        delete staticBoxBody->getCollisionShape();
-        delete staticBoxBody;
+        dynamicsWorld->removeRigidBody(forearmBody);
+        delete forearmBody->getMotionState();
+        delete forearmBody->getCollisionShape();
+        delete forearmBody;
 
-        dynamicsWorld->removeRigidBody(palletBody);
-        delete palletBody->getMotionState();
-        delete palletBody->getCollisionShape();
-        delete palletBody;
+        dynamicsWorld->removeRigidBody(bicepBody);
+        delete bicepBody->getMotionState();
+        delete bicepBody->getCollisionShape();
+        delete bicepBody;
+
+        dynamicsWorld->removeRigidBody(basePillarBody);
+        delete basePillarBody->getMotionState();
+        delete basePillarBody->getCollisionShape();
+        delete basePillarBody;
 
         dynamicsWorld->removeRigidBody(floorBody);
         delete floorBody->getMotionState();
@@ -114,66 +138,44 @@ public:
     }
     
     std::vector<float> reset() {
-        // Generate random starting coordinates between -2.0m and 2.0m
-        float start_x = pos_distribution(rng);
-        float start_z = pos_distribution(rng);
-
-        btTransform resetTransform;
-        resetTransform.setIdentity();
-        resetTransform.setOrigin(btVector3(start_x, 5.0f, start_z));
-        dynamicBoxBody->setWorldTransform(resetTransform);
-        dynamicBoxBody->getMotionState()->setWorldTransform(resetTransform);
-        
-        dynamicBoxBody->setLinearVelocity(btVector3(0, 0, 0));
-        dynamicBoxBody->setAngularVelocity(btVector3(0, 0, 0));
-        dynamicBoxBody->clearForces();
-
-        // Feed the new random position to the Python Gym Environment
-        return {start_x, 5.0f, start_z};
+        // Per ora facciamo semplicemente ripartire i motori da fermi.
+        // Lo stato ora ha 4 sensori: [angolo_spalla, angolo_gomito, velocità_spalla, velocità_gomito]
+        return {0.0f, 0.0f, 0.0f, 0.0f};
     }
     
     std::tuple<std::vector<float>, float, bool> step(std::vector<float> action) {
-        dynamicBoxBody->activate(true);
-
-        btVector3 thrust(action[0] * 50.0f, 0.0f, action[1] * 50.0f);
-        dynamicBoxBody->applyCentralForce(thrust);
+        // L'IA non controlla più X e Z, ma decide la VELOCITA' DEI MOTORI (rad/s)
+        float velSpalla = action[0] * 2.0f; // Da -2 a +2 rad/s
+        float velGomito = action[1] * 2.0f;
+        
+        shoulderJoint->setMotorTargetVelocity(velSpalla);
+        elbowJoint->setMotorTargetVelocity(velGomito);
 
         dynamicsWorld->stepSimulation(1.0f / 60.0f, 10);
 
-        btTransform trans;
-        dynamicBoxBody->getMotionState()->getWorldTransform(trans);
+        // Leggiamo i sensori interni (Encoder dei giunti)
+        float angSpalla = shoulderJoint->getHingeAngle();
+        float angGomito = elbowJoint->getHingeAngle();
         
-        float pos_x = trans.getOrigin().getX();
-        float height_y = trans.getOrigin().getY();
-        float pos_z = trans.getOrigin().getZ();
+        std::vector<float> stato = {angSpalla, angGomito, velSpalla, velGomito};
 
-        std::vector<float> new_state = {pos_x, height_y, pos_z};
+        // Calcoliamo dove si trova la punta dell'avambraccio (Forward Kinematics) per la reward
+        btTransform trans;
+        forearmBody->getMotionState()->getWorldTransform(trans);
+        float altezza_polso = trans.getOrigin().getY(); 
 
-        bool done = false;
-        float reward = 0.0f;
+        // OBIETTIVO TEMPORANEO: Combattere la gravità!
+        // Diamo punti all'IA se riesce a tenere il polso in aria.
+        float reward = altezza_polso * 0.1f; 
+        bool done = false; 
 
-        // Reward Shaping
-        float distance_from_center = (pos_x * pos_x) + (pos_z * pos_z);
-        reward -= distance_from_center * 0.1f; 
-
-        float energy_waste = (action[0] * action[0]) + (action[1] * action[1]);
-        reward -= energy_waste * 0.01f;
-
-        // Terminal Reward
-        if (height_y <= 0.451f) {
+        // Se l'IA spegne i motori e il braccio crolla a terra, fine episodio e penalità!
+        if(altezza_polso < 0.2f) {
+            reward -= 10.0f;
             done = true;
-            
-            bool inside_x = (pos_x >= -0.2f && pos_x <= 0.2f);
-            bool inside_z = (pos_z >= -0.15f && pos_z <= 0.15f);
-            
-            if (inside_x && inside_z) {
-                reward += 10.0f; // Strike
-            } else {
-                reward -= 5.0f;  // Crash
-            }
         }
 
-        return std::make_tuple(new_state, reward, done);
+        return std::make_tuple(stato, reward, done);
     }
 };
 
