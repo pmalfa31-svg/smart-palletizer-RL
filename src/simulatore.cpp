@@ -23,7 +23,7 @@ private:
     btHingeConstraint* shoulderJoint;
     btHingeConstraint* elbowJoint;
 
-
+    float targetX, targetY;
 
 public:
     AmbienteRobot() {
@@ -138,44 +138,40 @@ public:
     }
     
     std::vector<float> reset() {
-        // Per ora facciamo semplicemente ripartire i motori da fermi.
-        // Lo stato ora ha 4 sensori: [angolo_spalla, angolo_gomito, velocità_spalla, velocità_gomito]
+        // Il target appare in un punto raggiungibile dal braccio
+        targetX = 0.5f; 
+        targetY = 1.8f;
+        
+        // Reset motori
+        shoulderJoint->setMotorTargetVelocity(0.0f);
+        elbowJoint->setMotorTargetVelocity(0.0f);
+        
         return {0.0f, 0.0f, 0.0f, 0.0f};
     }
     
     std::tuple<std::vector<float>, float, bool> step(std::vector<float> action) {
-        // L'IA non controlla più X e Z, ma decide la VELOCITA' DEI MOTORI (rad/s)
-        float velSpalla = action[0] * 2.0f; // Da -2 a +2 rad/s
-        float velGomito = action[1] * 2.0f;
-        
+        float velSpalla = action[0] * 3.0f;
+        float velGomito = action[1] * 3.0f;
         shoulderJoint->setMotorTargetVelocity(velSpalla);
         elbowJoint->setMotorTargetVelocity(velGomito);
 
         dynamicsWorld->stepSimulation(1.0f / 60.0f, 10);
 
-        // Leggiamo i sensori interni (Encoder dei giunti)
-        float angSpalla = shoulderJoint->getHingeAngle();
-        float angGomito = elbowJoint->getHingeAngle();
-        
-        std::vector<float> stato = {angSpalla, angGomito, velSpalla, velGomito};
-
-        // Calcoliamo dove si trova la punta dell'avambraccio (Forward Kinematics) per la reward
+        // Otteniamo la posizione punta avambraccio (End-Effector)
         btTransform trans;
         forearmBody->getMotionState()->getWorldTransform(trans);
-        float altezza_polso = trans.getOrigin().getY(); 
+        float posX = trans.getOrigin().getX();
+        float posY = trans.getOrigin().getY();
 
-        // OBIETTIVO TEMPORANEO: Combattere la gravità!
-        // Diamo punti all'IA se riesce a tenere il polso in aria.
-        float reward = altezza_polso * 0.1f; 
-        bool done = false; 
+        // Reward: meno distanza dal target, più punti!
+        float dist = std::sqrt(std::pow(posX - targetX, 2) + std::pow(posY - targetY, 2));
+        float reward = -dist; // Penalità basata sulla distanza
 
-        // Se l'IA spegne i motori e il braccio crolla a terra, fine episodio e penalità!
-        if(altezza_polso < 0.2f) {
-            reward -= 10.0f;
-            done = true;
-        }
+        // Bonus se il braccio è vicino (precisione millimetrica)
+        if (dist < 0.1f) reward += 5.0f;
 
-        return std::make_tuple(stato, reward, done);
+        bool done = false;
+        return std::make_tuple(std::vector<float>{shoulderJoint->getHingeAngle(), elbowJoint->getHingeAngle(), velSpalla, velGomito}, reward, done);
     }
 };
 
