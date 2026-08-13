@@ -1,13 +1,13 @@
 cmake_minimum_required(VERSION 3.15)
 project(SmartPalletizer)
 
-# Forza CMake a tollerare le vecchie configurazioni di Bullet Physics
+# Force CMake to tolerate older Bullet Physics configurations
 set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
 
-# 1. Trova Python
+# 1. Find Python
 find_package(Python COMPONENTS Interpreter Development REQUIRED)
 
-# 2. Scarica pybind11
+# 2. Download pybind11
 include(FetchContent)
 FetchContent_Declare(
   pybind11
@@ -16,7 +16,7 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(pybind11)
 
-# 3. Scarica Bullet Physics (Disabilitiamo test e demo per velocizzare la build)
+# 3. Download Bullet Physics (Disable tests and demos for faster builds)
 set(BUILD_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(BUILD_BULLET2_DEMOS OFF CACHE BOOL "" FORCE)
 set(BUILD_CPU_DEMOS OFF CACHE BOOL "" FORCE)
@@ -30,15 +30,24 @@ FetchContent_Declare(
 )
 FetchContent_MakeAvailable(bullet3)
 
-# 4. Compila il modulo
-pybind11_add_module(mio_simulatore src/simulatore.cpp)
+# ADDED: Tell the compiler where to find our new OOP header (.h) files
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-# 5. COLLEGA LA FISICA AL NOSTRO MODULO (Questa è la riga nuova fondamentale!)
+# 4. Compile the module (Now including all the OOP components)
+# 4. Compile the module (Now including all the OOP components)
+pybind11_add_module(mio_simulatore 
+    src/WorldManager.cpp   
+    src/Package.cpp
+    src/ConveyorBelt.cpp
+    src/RoboticArm.cpp
+)
+
+# 5. Link physics to our module
 target_link_libraries(mio_simulatore PRIVATE BulletDynamics BulletCollision LinearMath)
-# NUOVA RIGA: Diciamo al compilatore dove trovare i file .h di Bullet
+# Tell the compiler where to find Bullet's .h files
 target_include_directories(mio_simulatore PRIVATE ${bullet3_SOURCE_DIR}/src)
 
-# 6. Copia il file in py_scripts
+# 6. Copy the file into py_scripts
 add_custom_command(TARGET mio_simulatore POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
     $<TARGET_FILE:mio_simulatore>
