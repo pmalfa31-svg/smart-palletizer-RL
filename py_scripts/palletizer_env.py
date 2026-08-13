@@ -8,21 +8,26 @@ class PalletizerEnv(gym.Env):
         super(PalletizerEnv, self).__init__()
         self.sim = mio_simulatore.AmbienteRobot()
         
-        # ACTION SPACE: 2 motori (Spalla e Gomito)
-        # La rete neurale sputerà fuori 2 numeri compresi tra -1.0 e 1.0.
-        # (Il C++ poi li moltiplica per 2.0 per ottenere i radianti al secondo reali)
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(2,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(7,), dtype=np.float32)
         
-        # OBSERVATION SPACE: 4 sensori
-        # [angolo_spalla, angolo_gomito, velocità_spalla, velocità_gomito]
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(4,), dtype=np.float32)
+        # IL TIMER DELLA VITA
+        self.current_step = 0
+        self.max_steps = 300 
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
+        self.current_step = 0 # Resettiamo il timer
         stato = self.sim.reset()
         return np.array(stato, dtype=np.float32), {}
 
     def step(self, action):
+        self.current_step += 1
         stato, reward, done = self.sim.step(action.tolist())
-        truncated = False 
+        
+        # Se scade il tempo, fermiamo il gioco
+        truncated = False
+        if self.current_step >= self.max_steps:
+            truncated = True
+            
         return np.array(stato, dtype=np.float32), float(reward), done, truncated, {}

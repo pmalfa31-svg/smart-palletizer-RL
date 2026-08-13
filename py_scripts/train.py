@@ -1,28 +1,33 @@
 from palletizer_env import PalletizerEnv
 from stable_baselines3 import PPO
 
-print("\n--- 1. Inizializzazione Fase 4: Target Kinematics ---")
+print("\n--- 1. Inizializzazione Curriculum Learning: Auto-Grip ---")
 env = PalletizerEnv()
 
-print("\n--- 2. Addestramento IA (Obiettivo: Raggiungere il target) ---")
-# Aumentiamo i timesteps a 300k per dare tempo all'IA di mappare lo spazio
+print("\n--- 2. Addestramento IA (Solo Cinematica di sollevamento) ---")
 model = PPO("MlpPolicy", env, verbose=1)
-model.learn(total_timesteps=300000)
+model.learn(total_timesteps=500000)
 
-# Salviamo come v2 perché la logica di controllo è cambiata
-model.save("py_scripts/cervello_braccio_v2")
-print("\n[OK] Nuovo cervello 'cervello_braccio_v2.zip' salvato!")
+model.save("py_scripts/cervello_braccio_v4_autogrip")
+print("\n[OK] Cervello 'cervello_braccio_v4_autogrip.zip' salvato!")
 
-print("\n--- 3. Test Finale: Precisione di Raggiungimento ---")
+print("\n--- 3. Test Finale: Auto-Grip & Lift ---")
 obs, info = env.reset()
 done = False
-# Testiamo su 50 step per vedere se il braccio si muove verso il target
-for i in range(50):
+
+for i in range(150):
     azione, _states = model.predict(obs, deterministic=True)
     obs, reward, terminated, truncated, info = env.step(azione)
     if terminated or truncated:
         break
 
+is_holding = bool(obs[6])
+box_height = obs[5]
+
 print(f"\nTest completato.")
-print(f"Sensori finali -> Angolo Spalla: {obs[0]:.2f} rad, Angolo Gomito: {obs[1]:.2f} rad")
-print(f"Ultima Reward (Distanza dal target): {reward:.2f}")
+if is_holding and box_height > 1.0:
+    print(f"BINGO! Il robot ha usato l'auto-grip e sollevato il pacco a {box_height:.2f}m!")
+elif is_holding:
+    print(f"PRESA RIUSCITA! Ma forza insufficiente per alzarlo (Altezza: {box_height:.2f}m).")
+else:
+    print("FALLIMENTO. L'IA sta ancora ballando intorno al pacco.")

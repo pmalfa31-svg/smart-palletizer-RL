@@ -2,6 +2,7 @@
 #include <pybind11/stl.h>
 #include <iostream>
 #include <vector>
+#include <cmath>
 #include <btBulletDynamicsCommon.h>
 
 namespace py = pybind11;
@@ -18,25 +19,24 @@ private:
     btRigidBody* basePillarBody;
     btRigidBody* bicepBody;
     btRigidBody* forearmBody;
+    btRigidBody* dynamicBoxBody;
     
-    // I nostri giunti robotici!
     btHingeConstraint* shoulderJoint;
     btHingeConstraint* elbowJoint;
-
-    float targetX, targetY;
+    btFixedConstraint* vacuumConstraint;
 
 public:
-    AmbienteRobot() {
-        std::cout << "[C++] Inizializzazione Fase 3: Braccio Articolato Verticale..." << std::endl;
+    AmbienteRobot() : vacuumConstraint(nullptr) {
+        std::cout << "[C++] Initializing Phase 4: Vacuum Grasping (Auto-Grip) & Reward Shaping..." << std::endl;
 
         collisionConfig = new btDefaultCollisionConfiguration();
         dispatcher = new btCollisionDispatcher(collisionConfig);
         overlappingPairCache = new btDbvtBroadphase();
         solver = new btSequentialImpulseConstraintSolver;
         dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfig);
-        dynamicsWorld->setGravity(btVector3(0, -9.81, 0)); // La gravità ora è il nemico n.1
+        dynamicsWorld->setGravity(btVector3(0, -9.81, 0));
 
-        // 1. PAVIMENTO
+        // 1. FLOOR
         btCollisionShape* floorShape = new btBoxShape(btVector3(50.0f, 0.5f, 50.0f)); 
         btTransform floorTransform;
         floorTransform.setIdentity();
@@ -46,7 +46,7 @@ public:
         floorBody = new btRigidBody(rbInfoFloor);
         dynamicsWorld->addRigidBody(floorBody);
 
-        // 2. PILASTRO DI BASE (Statico, massa 0)
+        // 2. BASE PILLAR
         btCollisionShape* baseShape = new btBoxShape(btVector3(0.2f, 0.5f, 0.2f)); 
         btTransform baseTransform;
         baseTransform.setIdentity();
@@ -56,12 +56,11 @@ public:
         basePillarBody = new btRigidBody(rbInfoBase);
         dynamicsWorld->addRigidBody(basePillarBody);
 
-        // 3. BICIPITE (Braccio 1, Dinamico, massa 2.0)
+        // 3. BICEP
         btCollisionShape* bicepShape = new btBoxShape(btVector3(0.1f, 0.5f, 0.1f));
         btTransform bicepTransform;
         bicepTransform.setIdentity();
-        bicepTransform.setOrigin(btVector3(0.0f, 1.5f, 0.0f)); // Posizionato in piedi sopra il pilastro
-        
+        bicepTransform.setOrigin(btVector3(0.0f, 1.5f, 0.0f)); 
         btScalar bicepMass(2.0f);
         btVector3 bicepInertia(0, 0, 0);
         bicepShape->calculateLocalInertia(bicepMass, bicepInertia);
@@ -70,12 +69,11 @@ public:
         bicepBody = new btRigidBody(rbInfoBicep);
         dynamicsWorld->addRigidBody(bicepBody);
 
-        // 4. AVAMBRACCIO (Braccio 2, Dinamico, massa 1.5)
+        // 4. FOREARM
         btCollisionShape* forearmShape = new btBoxShape(btVector3(0.08f, 0.5f, 0.08f));
         btTransform forearmTransform;
         forearmTransform.setIdentity();
-        forearmTransform.setOrigin(btVector3(0.0f, 2.5f, 0.0f)); // Posizionato in piedi sopra il bicipite
-        
+        forearmTransform.setOrigin(btVector3(0.0f, 2.5f, 0.0f)); 
         btScalar forearmMass(1.5f);
         btVector3 forearmInertia(0, 0, 0);
         forearmShape->calculateLocalInertia(forearmMass, forearmInertia);
@@ -84,31 +82,48 @@ public:
         forearmBody = new btRigidBody(rbInfoForearm);
         dynamicsWorld->addRigidBody(forearmBody);
 
-        // --- GIUNTI E MOTORI ---
-        
-        // A. SPALLA (Asse Z per rotazione verticale planare)
+        // 5. THE PACKAGE
+        btCollisionShape* dynamicBoxShape = new btBoxShape(btVector3(0.15f, 0.15f, 0.15f)); 
+        btTransform dynamicBoxTransform;
+        dynamicBoxTransform.setIdentity();
+        dynamicBoxTransform.setOrigin(btVector3(1.0f, 0.15f, 0.0f));
+        btScalar boxMass(1.0f);
+        btVector3 boxInertia(0, 0, 0);
+        dynamicBoxShape->calculateLocalInertia(boxMass, boxInertia);
+        btDefaultMotionState* dynamicBoxMotionState = new btDefaultMotionState(dynamicBoxTransform);
+        btRigidBody::btRigidBodyConstructionInfo rbInfoDynamicBox(boxMass, dynamicBoxMotionState, dynamicBoxShape, boxInertia);
+        dynamicBoxBody = new btRigidBody(rbInfoDynamicBox);
+        dynamicsWorld->addRigidBody(dynamicBoxBody);
+
+        // JOINTS
         btVector3 axisZ(0, 0, 1);
-        btVector3 pivotInBase(0, 0.5f, 0);     // Aggancio: Cima del pilastro
-        btVector3 pivotInBicep(0, -0.5f, 0);   // Aggancio: Fondo del bicipite
-        
+        btVector3 pivotInBase(0, 0.5f, 0);     
+        btVector3 pivotInBicep(0, -0.5f, 0);   
         shoulderJoint = new btHingeConstraint(*basePillarBody, *bicepBody, pivotInBase, pivotInBicep, axisZ, axisZ);
-        shoulderJoint->enableAngularMotor(true, 0.0f, 150.0f); // Motore acceso! Max Torque 150
+        shoulderJoint->enableAngularMotor(true, 0.0f, 250.0f); 
         dynamicsWorld->addConstraint(shoulderJoint, true);
 
-        // B. GOMITO (Asse Z)
-        btVector3 pivotInBicepTop(0, 0.5f, 0);       // Aggancio: Cima del bicipite
-        btVector3 pivotInForearmBottom(0, -0.5f, 0); // Aggancio: Fondo dell'avambraccio
-        
+        btVector3 pivotInBicepTop(0, 0.5f, 0);       
+        btVector3 pivotInForearmBottom(0, -0.5f, 0); 
         elbowJoint = new btHingeConstraint(*bicepBody, *forearmBody, pivotInBicepTop, pivotInForearmBottom, axisZ, axisZ);
-        elbowJoint->enableAngularMotor(true, 0.0f, 100.0f); // Motore acceso! Max Torque 100
+        elbowJoint->enableAngularMotor(true, 0.0f, 150.0f); 
         dynamicsWorld->addConstraint(elbowJoint, true);
     }
 
     ~AmbienteRobot() {
+        if (vacuumConstraint) {
+            dynamicsWorld->removeConstraint(vacuumConstraint);
+            delete vacuumConstraint;
+        }
         dynamicsWorld->removeConstraint(elbowJoint);
         delete elbowJoint;
         dynamicsWorld->removeConstraint(shoulderJoint);
         delete shoulderJoint;
+
+        dynamicsWorld->removeRigidBody(dynamicBoxBody);
+        delete dynamicBoxBody->getMotionState();
+        delete dynamicBoxBody->getCollisionShape();
+        delete dynamicBoxBody;
 
         dynamicsWorld->removeRigidBody(forearmBody);
         delete forearmBody->getMotionState();
@@ -138,40 +153,113 @@ public:
     }
     
     std::vector<float> reset() {
-        // Il target appare in un punto raggiungibile dal braccio
-        targetX = 0.5f; 
-        targetY = 1.8f;
-        
-        // Reset motori
+        if (vacuumConstraint) {
+            dynamicsWorld->removeConstraint(vacuumConstraint);
+            delete vacuumConstraint;
+            vacuumConstraint = nullptr;
+        }
+
+        // 1. Reset Box
+        btTransform boxTrans;
+        boxTrans.setIdentity();
+        boxTrans.setOrigin(btVector3(1.0f, 0.15f, 0.0f));
+        dynamicBoxBody->setWorldTransform(boxTrans);
+        dynamicBoxBody->getMotionState()->setWorldTransform(boxTrans);
+        dynamicBoxBody->setLinearVelocity(btVector3(0,0,0));
+        dynamicBoxBody->setAngularVelocity(btVector3(0,0,0));
+        dynamicBoxBody->clearForces();
+
+        // 2. Reset Arms
+        btTransform bicepTrans;
+        bicepTrans.setIdentity();
+        bicepTrans.setOrigin(btVector3(0.0f, 1.5f, 0.0f));
+        bicepBody->setWorldTransform(bicepTrans);
+        bicepBody->getMotionState()->setWorldTransform(bicepTrans);
+        bicepBody->setLinearVelocity(btVector3(0,0,0));
+        bicepBody->setAngularVelocity(btVector3(0,0,0));
+        bicepBody->clearForces();
+
+        btTransform forearmTrans;
+        forearmTrans.setIdentity();
+        forearmTrans.setOrigin(btVector3(0.0f, 2.5f, 0.0f));
+        forearmBody->setWorldTransform(forearmTrans);
+        forearmBody->getMotionState()->setWorldTransform(forearmTrans);
+        forearmBody->setLinearVelocity(btVector3(0,0,0));
+        forearmBody->setAngularVelocity(btVector3(0,0,0));
+        forearmBody->clearForces();
+
         shoulderJoint->setMotorTargetVelocity(0.0f);
         elbowJoint->setMotorTargetVelocity(0.0f);
         
-        return {0.0f, 0.0f, 0.0f, 0.0f};
+        // 3. Return true sensor data
+        return {
+            shoulderJoint->getHingeAngle(), elbowJoint->getHingeAngle(),
+            0.0f, 0.0f,
+            1.0f, 0.15f,
+            0.0f
+        };
     }
     
     std::tuple<std::vector<float>, float, bool> step(std::vector<float> action) {
         float velSpalla = action[0] * 3.0f;
         float velGomito = action[1] * 3.0f;
+
         shoulderJoint->setMotorTargetVelocity(velSpalla);
         elbowJoint->setMotorTargetVelocity(velGomito);
 
         dynamicsWorld->stepSimulation(1.0f / 60.0f, 10);
 
-        // Otteniamo la posizione punta avambraccio (End-Effector)
-        btTransform trans;
-        forearmBody->getMotionState()->getWorldTransform(trans);
-        float posX = trans.getOrigin().getX();
-        float posY = trans.getOrigin().getY();
+        btTransform eeLocalTrans;
+        eeLocalTrans.setIdentity();
+        eeLocalTrans.setOrigin(btVector3(0, 0.5f, 0)); 
+        btTransform eeWorldTrans = forearmBody->getWorldTransform() * eeLocalTrans;
+        float eeX = eeWorldTrans.getOrigin().getX();
+        float eeY = eeWorldTrans.getOrigin().getY();
 
-        // Reward: meno distanza dal target, più punti!
-        float dist = std::sqrt(std::pow(posX - targetX, 2) + std::pow(posY - targetY, 2));
-        float reward = -dist; // Penalità basata sulla distanza
+        btTransform boxTrans;
+        dynamicBoxBody->getMotionState()->getWorldTransform(boxTrans);
+        float boxX = boxTrans.getOrigin().getX();
+        float boxY = boxTrans.getOrigin().getY();
 
-        // Bonus se il braccio è vicino (precisione millimetrica)
-        if (dist < 0.1f) reward += 5.0f;
+        float dist_to_box = std::sqrt(std::pow(eeX - boxX, 2) + std::pow(eeY - boxY, 2));
 
-        bool done = false;
-        return std::make_tuple(std::vector<float>{shoulderJoint->getHingeAngle(), elbowJoint->getHingeAngle(), velSpalla, velGomito}, reward, done);
+        // VACUUM LOGIC (AUTO-GRIP)
+        if (!vacuumConstraint && dist_to_box < 0.4f) {
+            btTransform frameInA = forearmBody->getWorldTransform().inverse() * dynamicBoxBody->getWorldTransform();
+            btTransform frameInB;
+            frameInB.setIdentity();
+            vacuumConstraint = new btFixedConstraint(*forearmBody, *dynamicBoxBody, frameInA, frameInB);
+            dynamicsWorld->addConstraint(vacuumConstraint, true);
+        } 
+
+        // REWARD SHAPING & TERMINATION CONDITIONS
+        float reward = 0.0f;
+        bool done = false; 
+        bool isHolding = (vacuumConstraint != nullptr);
+
+        if (!isHolding) {
+            reward = -dist_to_box; 
+        } else {
+            reward = 5.0f; // Small constant reward for holding it
+        }
+
+        // GAME OVER AND LEVEL CLEAR
+        if (boxY > 1.0f) {
+            reward += 2000.0f; // JACKPOT! Lifted the box
+            done = true;      // LEVEL CLEAR
+        } else if (eeY < 0.1f) {
+            reward -= 2000.0f;  // CRASH! Hit the floor
+            done = true;      // GAME OVER
+        }
+
+        std::vector<float> state = {
+            shoulderJoint->getHingeAngle(), elbowJoint->getHingeAngle(),
+            velSpalla, velGomito,
+            boxX, boxY,
+            isHolding ? 1.0f : 0.0f
+        };
+
+        return std::make_tuple(state, reward, done);
     }
 };
 
