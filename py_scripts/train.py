@@ -1,33 +1,33 @@
 from palletizer_env import PalletizerEnv
 from stable_baselines3 import PPO
-import time
 
-print("\n--- 1. Inizializzazione Ambiente ---")
+print("\n--- 1. Inizializzazione Nuovo Magazzino ---")
 env = PalletizerEnv()
 
-print("\n--- 2. Caricamento del Cervello IA ---")
-# Carichiamo il file .zip che contiene la rete neurale
-model = PPO.load("py_scripts/cervello_palletizer")
-print("[OK] Rete Neurale caricata con successo!")
+print("\n--- 2. Addestramento IA (Obiettivo: Centrare il Pallet!) ---")
+# Creiamo un nuovo cervello vergine
+model = PPO("MlpPolicy", env, verbose=1)
 
-print("\n--- 3. Test dell'IA al comando ---")
+# Addestriamo per 20.000 fotogrammi (l'IA imparerà a evitare il pavimento)
+model.learn(total_timesteps=20000)
+
+# Salviamo il nuovo cervello specializzato
+model.save("py_scripts/cervello_pallet_v1")
+print("\n[OK] Nuovo cervello 'cervello_pallet_v1.zip' salvato!")
+
+print("\n--- 3. Test Finale: Vediamo la mira dell'IA ---")
 obs, info = env.reset()
 done = False
 step_count = 0
 
 while not done:
-    # LA MAGIA È QUI: L'IA guarda le coordinate (obs) e decide l'azione!
-    # deterministic=True significa che prenderà l'azione che reputa migliore in assoluto
+    # L'IA sceglie l'azione migliore in base a quello che ha appena imparato
     azione, _states = model.predict(obs, deterministic=True)
     
-    # Eseguiamo l'azione decisa dall'IA nel mondo C++
     obs, reward, terminated, truncated, info = env.step(azione)
     done = terminated or truncated
     step_count += 1
-    
-    if step_count % 10 == 0:
-        print(f"Step {step_count} | Posizione X: {obs[0]:.2f}, Y: {obs[1]:.2f}")
-        time.sleep(0.1) # Rallentiamo per goderci lo spettacolo
 
-print(f"\nImpatto allo step {step_count}!")
-print(f"Posizione finale -> X: {obs[0]:.2f}, Y: {obs[1]:.2f}, Z: {obs[2]:.2f}")
+print(f"\nBOOM! Impatto allo step {step_count}.")
+print(f"Posizione finale pacco -> X: {obs[0]:.2f}, Y: {obs[1]:.2f}, Z: {obs[2]:.2f}")
+print(f"Punteggio ottenuto (Reward): {reward}")
