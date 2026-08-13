@@ -1,29 +1,24 @@
 from palletizer_env import PalletizerEnv
 from stable_baselines3 import PPO
 
-print("\n--- 1. Inizializzazione Nuovo Magazzino ---")
+print("\n--- 1. Inizializzazione Fase 2: Stacking ---")
 env = PalletizerEnv()
 
-print("\n--- 2. Addestramento IA (Obiettivo: Centrare il Pallet!) ---")
-# Creiamo un nuovo cervello vergine
+print("\n--- 2. Addestramento IA (Obiettivo: Torre di scatole!) ---")
+# Usiamo 30.000 fotogrammi per assicurarci che capisca i nuovi limiti ristretti
 model = PPO("MlpPolicy", env, verbose=1)
+model.learn(total_timesteps=150000)
 
-# Addestriamo per 20.000 fotogrammi (l'IA imparerà a evitare il pavimento)
-model.learn(total_timesteps=20000)
+model.save("py_scripts/cervello_stacking_v1")
+print("\n[OK] Nuovo cervello 'cervello_stacking_v1.zip' salvato!")
 
-# Salviamo il nuovo cervello specializzato
-model.save("py_scripts/cervello_pallet_v1")
-print("\n[OK] Nuovo cervello 'cervello_pallet_v1.zip' salvato!")
-
-print("\n--- 3. Test Finale: Vediamo la mira dell'IA ---")
+print("\n--- 3. Test Finale: L'incastro perfetto ---")
 obs, info = env.reset()
 done = False
 step_count = 0
 
 while not done:
-    # L'IA sceglie l'azione migliore in base a quello che ha appena imparato
     azione, _states = model.predict(obs, deterministic=True)
-    
     obs, reward, terminated, truncated, info = env.step(azione)
     done = terminated or truncated
     step_count += 1

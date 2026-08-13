@@ -15,12 +15,13 @@ private:
     btDiscreteDynamicsWorld* dynamicsWorld;
     
     btRigidBody* pavimentoBody;
-    btRigidBody* palletBody; // Il nostro nuovo bancale!
-    btRigidBody* paccoBody;
+    btRigidBody* palletBody;
+    btRigidBody* paccoStaticoBody; // NOVITÀ: La prima scatola già sul bancale
+    btRigidBody* paccoBody;        // Il pacco controllato dall'IA
 
 public:
     AmbienteRobot() {
-        std::cout << "[C++] Inizializzazione magazzino logistico..." << std::endl;
+        std::cout << "[C++] Inizializzazione fase 2: Stacking (Incastro)..." << std::endl;
 
         collisionConfiguration = new btDefaultCollisionConfiguration();
         dispatcher = new btCollisionDispatcher(collisionConfiguration);
@@ -29,7 +30,7 @@ public:
         dynamicsWorld = new btDiscreteDynamicsWorld(dispatcher, overlappingPairCache, solver, collisionConfiguration);
         dynamicsWorld->setGravity(btVector3(0, -9.81, 0));
 
-        // 1. PAVIMENTO (Infinito, Y=0)
+        // 1. PAVIMENTO
         btCollisionShape* pavimentoShape = new btBoxShape(btVector3(50.0f, 0.5f, 50.0f)); 
         btTransform pavimentoTransform;
         pavimentoTransform.setIdentity();
@@ -39,23 +40,35 @@ public:
         pavimentoBody = new btRigidBody(rbInfoPavimento);
         dynamicsWorld->addRigidBody(pavimentoBody);
 
-        // 2. EUROPALLET (Massa 0 = Immobile. Dimensioni: 1.2m x 0.15m x 0.8m)
-        // In Bullet usiamo le "mezze misure" dal centro: X=0.6, Y=0.075, Z=0.4
+        // 2. EUROPALLET (Centro Y=0.075)
         btCollisionShape* palletShape = new btBoxShape(btVector3(0.6f, 0.075f, 0.4f)); 
         btTransform palletTransform;
         palletTransform.setIdentity();
-        palletTransform.setOrigin(btVector3(0.0f, 0.075f, 0.0f)); // Appoggiato a terra
+        palletTransform.setOrigin(btVector3(0.0f, 0.075f, 0.0f)); 
         btDefaultMotionState* palletMotionState = new btDefaultMotionState(palletTransform);
         btRigidBody::btRigidBodyConstructionInfo rbInfoPallet(0.0f, palletMotionState, palletShape, btVector3(0,0,0));
         palletBody = new btRigidBody(rbInfoPallet);
         dynamicsWorld->addRigidBody(palletBody);
 
-        // 3. PACCO REALISTICO (Dimensioni: 40x20x30 cm. Massa: 5kg)
-        // Mezze misure: X=0.2, Y=0.1, Z=0.15
+        // 3. PACCO STATICO (Il bersaglio!). Dimensioni 40x20x30 cm.
+        // Mezze misure: X=0.2, Y=0.1, Z=0.15. 
+        // Appoggiato sul pallet (altezza 0.15). Il suo centro Y sarà 0.15 + 0.1 = 0.25.
+        btCollisionShape* paccoStaticoShape = new btBoxShape(btVector3(0.2f, 0.1f, 0.15f)); 
+        btTransform paccoStaticoTransform;
+        paccoStaticoTransform.setIdentity();
+        paccoStaticoTransform.setOrigin(btVector3(0.0f, 0.25f, 0.0f)); 
+        btDefaultMotionState* paccoStaticoMotionState = new btDefaultMotionState(paccoStaticoTransform);
+        
+        // Massa 0.0f = Oggetto Statico (non cade, non subisce spinte)
+        btRigidBody::btRigidBodyConstructionInfo rbInfoPaccoStatico(0.0f, paccoStaticoMotionState, paccoStaticoShape, btVector3(0,0,0));
+        paccoStaticoBody = new btRigidBody(rbInfoPaccoStatico);
+        dynamicsWorld->addRigidBody(paccoStaticoBody);
+
+        // 4. PACCO DINAMICO (L'agente)
         btCollisionShape* paccoShape = new btBoxShape(btVector3(0.2f, 0.1f, 0.15f)); 
         btTransform paccoTransform;
         paccoTransform.setIdentity();
-        paccoTransform.setOrigin(btVector3(0, 5.0f, 0)); // Parte da 5 metri di altezza
+        paccoTransform.setOrigin(btVector3(0, 5.0f, 0)); 
         
         btScalar massaPacco(5.0f);
         btVector3 inerziaPacco(0, 0, 0);
@@ -65,8 +78,6 @@ public:
         btRigidBody::btRigidBodyConstructionInfo rbInfoPacco(massaPacco, paccoMotionState, paccoShape, inerziaPacco);
         paccoBody = new btRigidBody(rbInfoPacco);
         dynamicsWorld->addRigidBody(paccoBody);
-
-        std::cout << "[C++] Magazzino pronto: Pavimento, Europallet e Pacco operativi!" << std::endl;
     }
 
     ~AmbienteRobot() {
@@ -74,6 +85,11 @@ public:
         delete paccoBody->getMotionState();
         delete paccoBody->getCollisionShape();
         delete paccoBody;
+
+        dynamicsWorld->removeRigidBody(paccoStaticoBody);
+        delete paccoStaticoBody->getMotionState();
+        delete paccoStaticoBody->getCollisionShape();
+        delete paccoStaticoBody;
 
         dynamicsWorld->removeRigidBody(palletBody);
         delete palletBody->getMotionState();
@@ -126,27 +142,30 @@ public:
         bool done = false;
         float reward = 0.0f;
 
-        // --- REWARD SHAPING ---
+        // Reward Shaping (uguale a prima, la teniamo vicino al centro X=0, Z=0)
         float distanza_dal_centro = (pos_x * pos_x) + (pos_z * pos_z);
         reward -= distanza_dal_centro * 0.1f; 
 
         float spreco_energia = (azione[0] * azione[0]) + (azione[1] * azione[1]);
         reward -= spreco_energia * 0.01f;
 
-        // --- REWARD TERMINALE CORRETTA ---
-        if (altezza_y <= 0.251f) {
+        // NUOVA LOGICA: Atterrare sulla prima scatola.
+        // La scatola sotto ha il tetto a Y=0.35. 
+        // Il pacco sopra ha mezza altezza 0.1. Se è perfettamente appoggiato, il suo centro è a 0.45.
+        // Applichiamo il correttivo per il tunneling a 0.451f.
+        if (altezza_y <= 0.451f) {
             done = true;
             
-            bool dentro_x = (pos_x >= -0.6f && pos_x <= 0.6f);
-            bool dentro_z = (pos_z >= -0.4f && pos_z <= 0.4f);
+            // L'area sicura non è più il bancale intero, ma solo la scatola sotto!
+            // I bordi della scatola sono a -0.2/0.2 (X) e -0.15/0.15 (Z).
+            bool sopra_scatola_x = (pos_x >= -0.2f && pos_x <= 0.2f);
+            bool sopra_scatola_z = (pos_z >= -0.15f && pos_z <= 0.15f);
             
-            // Se le coordinate X e Z sono quelle del bancale, è un centro perfetto.
-            // Ignoriamo la compenetrazione su Y causata dai "salti" di frame!
-            if (dentro_x && dentro_z) {
-                // Strike! È sul pallet.
+            if (sopra_scatola_x && sopra_scatola_z) {
+                // Strike! Scatola impilata con successo.
                 reward += 10.0f; 
             } else {
-                // Crash sul cemento.
+                // Crash. Ha mancato la prima scatola, magari è caduta sul pallet o a terra.
                 reward -= 5.0f;  
             }
         }
