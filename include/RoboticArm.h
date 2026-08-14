@@ -22,6 +22,8 @@ public:
     void applyMotorVelocities(float velSpalla, float velGomito);
     void handleVacuum(bool grip_command, Package* targetBox);
 
+    float getElbowX();
+    float getElbowY();
     float getEndEffectorX();
     float getEndEffectorY();
     float getShoulderAngle();

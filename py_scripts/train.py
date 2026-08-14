@@ -1,18 +1,17 @@
 from palletizer_env import PalletizerEnv
 from stable_baselines3 import PPO
 
-print("\n--- 1. Inizializzazione Ambiente Nativo OOP ---")
+print("\n--- 1. Native OOP Environment Initialization ---")
 env = PalletizerEnv()
 
-print("\n--- 2. Addestramento IA (Tabula Rasa) ---")
-# Partiamo da zero. 500k step per dominare la nuova fisica modulare.
+print("\n--- 2. AI Training (Tabula Rasa) ---")
 model = PPO("MlpPolicy", env, verbose=1, learning_rate=0.0001)
-model.learn(total_timesteps=500000)
+model.learn(total_timesteps=900000)
 
-model.save("py_scripts/cervello_braccio_v8_dynamic")
-print("\n[OK] Cervello 'cervello_braccio_v8_dynamic.zip' salvato!")
+model.save("py_scripts/cervello_braccio_v9_dynamic")
+print("\n[OK] Model 'cervello_braccio_v9_dynamic.zip' saved!")
 
-print("\n--- 3. Test Finale: Grasping OOP ---")
+print("\n--- 3. Final Test: Grasping OOP ---")
 obs, info = env.reset()
 done = False
 
@@ -22,11 +21,12 @@ for i in range(600):
     if terminated or truncated:
         break
 
-is_holding = bool(obs[6])
-box_height = obs[5]
+# Extracted from the new 10-dimensional state vector
+box_height = obs[9]
+is_holding = bool(obs[11])
 
-print(f"\nTest completato.")
+print(f"\nTest completed.")
 if is_holding and box_height > 1.0:
-    print(f"TRIONFO ARCHITETTURALE! L'IA nativa ha sollevato il pacco a {box_height:.2f}m!")
+    print(f"ARCHITECTURAL TRIUMPH! Native AI successfully lifted the package to {box_height:.2f}m!")
 else:
-    print(f"Mancato. Altezza: {box_height:.2f}m.")
+    print(f"Missed. Final height: {box_height:.2f}m.")

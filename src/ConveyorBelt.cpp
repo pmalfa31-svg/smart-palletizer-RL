@@ -31,7 +31,9 @@ void ConveyorBelt::update(Package* targetBox) {
     float boxY = trans.getOrigin().getY();
 
     // Se il pacco è fisicamente appoggiato sul nastro
-    if (boxY < 0.2f) {
+    // FIX: soglia alzata da 0.2f a 0.65f, coerente con la nuova altezza
+    // di riposo del pacco (0.6f invece di 0.15f)
+    if (boxY < 0.65f) {
         btVector3 currentVel = boxBody->getLinearVelocity();
         // Override della sola velocità sull'asse X per simulare lo scorrimento
         boxBody->setLinearVelocity(btVector3(beltSpeed, currentVel.getY(), currentVel.getZ()));

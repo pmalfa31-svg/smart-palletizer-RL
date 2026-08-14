@@ -8,18 +8,17 @@ class PalletizerEnv(gym.Env):
         super(PalletizerEnv, self).__init__()
         self.sim = mio_simulatore.AmbienteRobot()
         
-        # ACTIONS (3): [Vel_Spalla, Vel_Gomito, Interruttore_Ventosa]
+        # ACTIONS (3): [Shoulder_Vel, Elbow_Vel, Vacuum_Switch]
         self.action_space = spaces.Box(low=-1.0, high=1.0, shape=(3,), dtype=np.float32)
         
-        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(8,), dtype=np.float32)
+        self.observation_space = spaces.Box(low=-np.inf, high=np.inf, shape=(12,), dtype=np.float32)
         
-        # IL TIMER DELLA VITA
         self.current_step = 0
-        self.max_steps = 300 
+        self.max_steps = 400 
 
     def reset(self, seed=None, options=None):
         super().reset(seed=seed)
-        self.current_step = 0 # Resettiamo il timer
+        self.current_step = 0
         stato = self.sim.reset()
         return np.array(stato, dtype=np.float32), {}
 
@@ -27,7 +26,6 @@ class PalletizerEnv(gym.Env):
         self.current_step += 1
         stato, reward, done = self.sim.step(action.tolist())
         
-        # Se scade il tempo, fermiamo il gioco
         truncated = False
         if self.current_step >= self.max_steps:
             truncated = True

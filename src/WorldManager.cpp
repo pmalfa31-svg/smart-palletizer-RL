@@ -47,9 +47,10 @@ public:
         dynamicsWorld->addRigidBody(floorBody);
 
         mainArm = new RoboticArm(dynamicsWorld);
-        // SPAWN LONTANO: a 2 metri di distanza lungo l'asse X
-        dynamicBox = new Package(dynamicsWorld, 2.0f, 0.15f, 0.0f);
-        feedBelt = new ConveyorBelt(dynamicsWorld, 1.5f, -0.1f, 0.0f);
+        
+        // Spawn distance set to 2.0m on X axis, operational height at 0.6m
+        dynamicBox = new Package(dynamicsWorld, 2.0f, 0.6f, 0.0f);
+        feedBelt = new ConveyorBelt(dynamicsWorld, 1.5f, 0.35f, 0.0f);
         compensatorRobot = new LayerCompensator(dynamicsWorld, 0.0f, 0.0f, 1.5f);
     }
 
@@ -70,17 +71,30 @@ public:
     }
     
     std::vector<float> reset() {
-        // Il pacco riparte da 2 metri
-        dynamicBox->resetPosition(2.0f, 0.15f, 0.0f);
+        // Il pacco riparte da 2 metri, alla nuova altezza operativa
+        dynamicBox->resetPosition(2.0f, 0.6f, 0.0f);
         mainArm->reset();
         compensatorRobot->reset();
         
+        // Estraiamo tutte le coordinate necessarie
+        float elbowX = mainArm->getElbowX();
+        float elbowY = mainArm->getElbowY();
+        float eeX = mainArm->getEndEffectorX();
+        float eeY = mainArm->getEndEffectorY();
+
         return {
-            mainArm->getShoulderAngle(), mainArm->getElbowAngle(),
-            0.0f, 0.0f,
-            dynamicBox->getX(), dynamicBox->getY(),
-            0.0f,
-            0.0f
+            mainArm->getShoulderAngle(), // 0
+            mainArm->getElbowAngle(),    // 1
+            0.0f,                        // 2: velSpalla iniziale
+            0.0f,                        // 3: velGomito iniziale
+            elbowX,                      // 4: Gomito X
+            elbowY,                      // 5: Gomito Y
+            eeX,                         // 6: Ventosa X
+            eeY,                         // 7: Ventosa Y
+            dynamicBox->getX(),          // 8: Pacco X
+            dynamicBox->getY(),          // 9: Pacco Y
+            0.0f,                        // 10: boxVX iniziale
+            0.0f                         // 11: isHolding iniziale
         };
     }
     
@@ -92,8 +106,6 @@ public:
         mainArm->applyMotorVelocities(velSpalla, velGomito);
         
         bool isHoldingPrima = mainArm->isHolding();
-        
-        // AGGIORNAMENTO FISICA DINAMICA: se non lo stiamo tenendo, il nastro lo sposta
         if (!isHoldingPrima) {
             feedBelt->update(dynamicBox);
         }
@@ -101,6 +113,8 @@ public:
         dynamicsWorld->stepSimulation(1.0f / 60.0f, 10);
         mainArm->handleVacuum(grip_command, dynamicBox);
 
+        float elbowX = mainArm->getElbowX(); // NUOVO
+        float elbowY = mainArm->getElbowY();
         float eeX = mainArm->getEndEffectorX();
         float eeY = mainArm->getEndEffectorY();
         float boxX = dynamicBox->getX();
@@ -112,44 +126,42 @@ public:
         bool isHolding = mainArm->isHolding();
 
         if (!isHolding) {
-            // Niente più numeri negativi! 
-            // Usiamo una funzione che dà un premio tra 0.0 e 1.0.
-            // A 2 metri di distanza vale circa 0.33, a 0 metri vale 1.0.
-            // Più si avvicina al pacco, più guadagna, spingendolo ad andare a prenderlo.
             reward = 1.0f / (1.0f + dist_to_box); 
         } else {
-            // Quando lo ha in mano, i punti diventano enormi (fino a 20 a frame)
             reward = boxY * 20.0f; 
             
-            // LA REGOLA RIMANE: Non barare allungandoti troppo!
             if (boxX > 1.0f) {
                 reward -= 5.0f; 
             }
         }
 
-        // CONDIZIONI DI VITTORIA E SCONFITTA
+        // Win/Loss conditions
         if (boxY > 1.0f) {
-            reward += 20.0f; // Sgonfiato da 2000
+            reward += 10000.0f;
             done = true;      
-        } else if (eeY < 0.1f) {
-            reward -= 20.0f; // Sgonfiato da 2000
+        } else if (eeY < 0.02f) { // Adjusted real crash threshold
+            reward -= 20.0f;
             done = true;      
         } else if (boxX < -0.2f && !isHolding) {
-            reward -= 20.0f; // Sgonfiato da 2000
+            reward -= 20.0f;
             done = true;
         }
 
-        // ... (resto del codice sopra invariato)
-        
-        // ESTRAIAMO LA VELOCITA' DEL PACCO
         float boxVX = dynamicBox->getBody()->getLinearVelocity().getX();
 
         std::vector<float> state = {
-            mainArm->getShoulderAngle(), mainArm->getElbowAngle(),
-            velSpalla, velGomito,
-            boxX, boxY, 
-            boxVX, // <--- IL NUOVO SENSO: VELOCITA' ASSE X
-            isHolding ? 1.0f : 0.0f
+            mainArm->getShoulderAngle(),
+            mainArm->getElbowAngle(),
+            velSpalla,
+            velGomito,
+            elbowX,                 // Indice 4
+            elbowY,                 // Indice 5
+            eeX,                    // Indice 6
+            eeY,                    // Indice 7
+            boxX,                   // Indice 8
+            boxY,                   // Indice 9
+            boxVX,                  // Indice 10
+            isHolding ? 1.0f : 0.0f // Indice 11
         };
 
         return std::make_tuple(state, reward, done);

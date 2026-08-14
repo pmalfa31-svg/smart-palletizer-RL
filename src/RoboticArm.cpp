@@ -155,3 +155,24 @@ float RoboticArm::getEndEffectorY() {
 float RoboticArm::getShoulderAngle() { return shoulderJoint->getHingeAngle(); }
 float RoboticArm::getElbowAngle() { return elbowJoint->getHingeAngle(); }
 bool RoboticArm::isHolding() { return vacuumConstraint != nullptr; }
+float RoboticArm::getElbowX() {
+    btTransform transform;
+    // Se non usi i MotionState, puoi usare direttamente: 
+    // transform = forearmBody->getWorldTransform();
+    if (forearmBody && forearmBody->getMotionState()) {
+        forearmBody->getMotionState()->getWorldTransform(transform);
+    } else {
+        transform = forearmBody->getWorldTransform();
+    }
+    return transform.getOrigin().getX();
+}
+
+float RoboticArm::getElbowY() {
+    btTransform transform;
+    if (forearmBody && forearmBody->getMotionState()) {
+        forearmBody->getMotionState()->getWorldTransform(transform);
+    } else {
+        transform = forearmBody->getWorldTransform();
+    }
+    return transform.getOrigin().getY();
+}
