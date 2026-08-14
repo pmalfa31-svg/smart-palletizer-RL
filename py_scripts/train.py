@@ -6,7 +6,7 @@ env = PalletizerEnv()
 
 print("\n--- 2. Addestramento IA (Tabula Rasa) ---")
 # Partiamo da zero. 500k step per dominare la nuova fisica modulare.
-model = PPO("MlpPolicy", env, verbose=1)
+model = PPO("MlpPolicy", env, verbose=1, learning_rate=0.0001)
 model.learn(total_timesteps=500000)
 
 model.save("py_scripts/cervello_braccio_v8_dynamic")
@@ -16,7 +16,7 @@ print("\n--- 3. Test Finale: Grasping OOP ---")
 obs, info = env.reset()
 done = False
 
-for i in range(150):
+for i in range(600):
     azione, _states = model.predict(obs, deterministic=True)
     obs, reward, terminated, truncated, info = env.step(azione)
     if terminated or truncated:

@@ -40,6 +40,7 @@ pybind11_add_module(mio_simulatore
     src/Package.cpp
     src/ConveyorBelt.cpp
     src/RoboticArm.cpp
+    src/LayerCompensator.cpp
 )
 
 # 5. Link physics to our module

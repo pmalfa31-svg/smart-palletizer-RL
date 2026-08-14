@@ -8,6 +8,7 @@
 #include "../include/Package.h"
 #include "../include/ConveyorBelt.h"
 #include "../include/RoboticArm.h"
+#include "../include/LayerCompensator.h"
 
 namespace py = pybind11;
 
@@ -23,6 +24,7 @@ private:
     RoboticArm* mainArm;
     Package* dynamicBox;
     ConveyorBelt* feedBelt;
+    LayerCompensator* compensatorRobot;
 
 public:
     AmbienteRobot() {
@@ -48,12 +50,14 @@ public:
         // SPAWN LONTANO: a 2 metri di distanza lungo l'asse X
         dynamicBox = new Package(dynamicsWorld, 2.0f, 0.15f, 0.0f);
         feedBelt = new ConveyorBelt(dynamicsWorld, 1.5f, -0.1f, 0.0f);
+        compensatorRobot = new LayerCompensator(dynamicsWorld, 0.0f, 0.0f, 1.5f);
     }
 
     ~AmbienteRobot() {
         delete mainArm;
         delete dynamicBox;
         delete feedBelt;
+        delete compensatorRobot;
         dynamicsWorld->removeRigidBody(floorBody);
         delete floorBody->getMotionState();
         delete floorBody->getCollisionShape();
@@ -69,6 +73,7 @@ public:
         // Il pacco riparte da 2 metri
         dynamicBox->resetPosition(2.0f, 0.15f, 0.0f);
         mainArm->reset();
+        compensatorRobot->reset();
         
         return {
             mainArm->getShoulderAngle(), mainArm->getElbowAngle(),
@@ -107,21 +112,30 @@ public:
         bool isHolding = mainArm->isHolding();
 
         if (!isHolding) {
-            reward = -dist_to_box; 
+            // Niente più numeri negativi! 
+            // Usiamo una funzione che dà un premio tra 0.0 e 1.0.
+            // A 2 metri di distanza vale circa 0.33, a 0 metri vale 1.0.
+            // Più si avvicina al pacco, più guadagna, spingendolo ad andare a prenderlo.
+            reward = 1.0f / (1.0f + dist_to_box); 
         } else {
-            reward = 5.0f; 
+            // Quando lo ha in mano, i punti diventano enormi (fino a 20 a frame)
+            reward = boxY * 20.0f; 
+            
+            // LA REGOLA RIMANE: Non barare allungandoti troppo!
+            if (boxX > 1.0f) {
+                reward -= 5.0f; 
+            }
         }
 
         // CONDIZIONI DI VITTORIA E SCONFITTA
         if (boxY > 1.0f) {
-            reward += 2000.0f; 
+            reward += 20.0f; // Sgonfiato da 2000
             done = true;      
         } else if (eeY < 0.1f) {
-            reward -= 2000.0f; // Scontro a terra
+            reward -= 20.0f; // Sgonfiato da 2000
             done = true;      
         } else if (boxX < -0.2f && !isHolding) {
-            // IL PACCO E' CADUTO DAL NASTRO! Ha superato il robot.
-            reward -= 2000.0f;
+            reward -= 20.0f; // Sgonfiato da 2000
             done = true;
         }
 
