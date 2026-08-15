@@ -1,0 +1,46 @@
+{
+	"sources" : 
+	[
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/bullet3-populate"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5c652c343b88cd6e2a6f858e5585f4d6/bullet3-populate.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/4a79a1c529bb31a0a12729ba2e47f67d/bullet3-populate-complete.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5e08ae85508f7ccd906bbefdb9bf9dd8/bullet3-populate-build.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5e08ae85508f7ccd906bbefdb9bf9dd8/bullet3-populate-configure.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5e08ae85508f7ccd906bbefdb9bf9dd8/bullet3-populate-download.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5e08ae85508f7ccd906bbefdb9bf9dd8/bullet3-populate-install.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5e08ae85508f7ccd906bbefdb9bf9dd8/bullet3-populate-mkdir.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5e08ae85508f7ccd906bbefdb9bf9dd8/bullet3-populate-patch.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5e08ae85508f7ccd906bbefdb9bf9dd8/bullet3-populate-test.rule"
+		},
+		{
+			"file" : "C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/CMakeFiles/5e08ae85508f7ccd906bbefdb9bf9dd8/bullet3-populate-update.rule"
+		}
+	],
+	"target" : 
+	{
+		"labels" : 
+		[
+			"bullet3-populate"
+		],
+		"name" : "bullet3-populate"
+	}
+}

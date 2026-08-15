@@ -1,0 +1,7 @@
+gymnasium>=0.29
+stable-baselines3>=2.3
+pyyaml>=6.0
+pytest>=8.0
+trimesh>=4.0
+numpy>=1.26
+panda3d>=1.10   # renderer di debug in tempo reale (vedi README)

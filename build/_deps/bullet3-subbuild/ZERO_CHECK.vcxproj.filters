@@ -1,0 +1,13 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="18.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <CustomBuild Include="C:\Users\Mynam\Desktop\smart-palletizer-rl\build\_deps\bullet3-subbuild\CMakeFiles\5c652c343b88cd6e2a6f858e5585f4d6\generate.stamp.rule">
+      <Filter>CMake Rules</Filter>
+    </CustomBuild>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="CMake Rules">
+      <UniqueIdentifier>{3BAEB4EF-3E59-306D-91FA-93EBAE222B66}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

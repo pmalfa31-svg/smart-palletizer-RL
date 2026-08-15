@@ -1,0 +1,10 @@
+^C:\USERS\MYNAM\DESKTOP\SMART-PALLETIZER-RL\BUILD\_DEPS\BULLET3-SUBBUILD\CMAKEFILES\5C652C343B88CD6E2A6F858E5585F4D6\GENERATE.STAMP.RULE
+setlocal
+"C:\Program Files\CMake\bin\cmake.exe" -SC:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild -BC:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild --check-stamp-list CMakeFiles/generate.stamp.list --vs-solution-file C:/Users/Mynam/Desktop/smart-palletizer-rl/build/_deps/bullet3-subbuild/bullet3-populate.slnx
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

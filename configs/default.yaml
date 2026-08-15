@@ -1,0 +1,39 @@
+simulation:
+  timestep: 0.01667      # 1/60 s
+  max_sub_steps: 10
+  episode_max_steps: 600
+
+conveyor:
+  radius: 2.0
+  center: [0.0, 0.0, 0.0]
+  height: 0.6
+  num_slots: 12
+  angular_speed: 0.3     # rad/s
+
+pallet:
+  width: 1.2             # m (EUR-pallet ~1.2x0.8)
+  depth: 0.8
+  cell_size: 0.05
+  origin: [1.5, 0.0, 1.5]
+
+arms:
+  - name: arm_a
+    urdf: assets/ur5/ur5.urdf
+    base_position: [1.0, 0.0, 1.0]
+  - name: arm_b
+    urdf: assets/ur5/ur5.urdf
+    base_position: [-1.0, 0.0, 1.0]
+
+reward:
+  # Potential-based shaping (Ng, Harada, Russell 1999): F(s,s') = gamma*phi(s') - phi(s).
+  # Nessuna costante "a occhio" come nelle versioni precedenti (boxY*20, eeY<0.1, ecc.) —
+  # phi() e i pesi vanno derivati e documentati quando implementiamo l'env.
+  gamma: 0.99
+  placement_success_bonus: 50.0
+  drop_penalty: -20.0
+
+training:
+  algorithm: PPO
+  total_timesteps: 2_000_000
+  learning_rate: 3.0e-4
+  seed: [0, 1, 2]        # multi-seed di default, non un singolo run "fortunato"
