@@ -1,4 +1,4 @@
-#include "ArticulatedArm.h"
+﻿#include "ArticulatedArm.h"
 #include <BulletCollision/CollisionShapes/btConvexHullShape.h>
 #include <BulletCollision/CollisionShapes/btCompoundShape.h>
 
@@ -51,7 +51,7 @@ void ArticulatedArm::finalizeBuild() {
 
         multiBody->setupRevolute(
             i, s.linkMass, inertia, parentIndex,
-            btQuaternion::getIdentity(),   // rotazione parent->questo link
+            s.rotParentToThis,
             s.axis,
             s.pivotInParent,
             -s.pivotInChild,
@@ -61,6 +61,11 @@ void ArticulatedArm::finalizeBuild() {
             auto* limit = new btMultiBodyJointLimitConstraint(multiBody, i, s.lowerLimit, s.upperLimit);
             physicsWorld.raw()->addMultiBodyConstraint(limit);
         }
+        // NOTA: setJointMaxForce non esiste su btMultiBody — il limite di
+        // forza per giunto si applica con un oggetto btMultiBodyJointMotor
+        // separato (una constraint, come i joint limit sopra), non e' una
+        // proprieta' diretta del link. Da aggiungere quando servira' un
+        // controllo motore piu' realistico di setJointVel puro.
     }
 
     multiBody->finalizeMultiDof();
@@ -104,10 +109,6 @@ void ArticulatedArm::reset() {
     }
     multiBody->setBasePos(basePos);
     multiBody->setBaseWorldTransform(btTransform(btQuaternion::getIdentity(), basePos));
-
-    // FIX: forwardKinematics vuole due array vuoti passati per riferimento
-    // (li riempie lei), non degli "scratch buffer" interni — non esistono
-    // scratch_q()/scratch_m() come li avevo scritti.
     btAlignedObjectArray<btQuaternion> scratchQ;
     btAlignedObjectArray<btVector3> scratchM;
     multiBody->forwardKinematics(scratchQ, scratchM);
@@ -119,4 +120,9 @@ btTransform ArticulatedArm::getEndEffectorTransform() const {
     }
     const int last = multiBody->getNumLinks() - 1;
     return multiBody->getLink(last).m_cachedWorldTransform;
+}
+
+std::pair<btVector3, btQuaternion> ArticulatedArm::getEndEffectorPose() const {
+    btTransform t = getEndEffectorTransform();
+    return { t.getOrigin(), t.getRotation() };
 }

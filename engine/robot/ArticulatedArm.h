@@ -1,9 +1,10 @@
-#pragma once
+﻿#pragma once
 #include <BulletDynamics/Featherstone/btMultiBody.h>
 #include <BulletDynamics/Featherstone/btMultiBodyLinkCollider.h>
 #include <BulletDynamics/Featherstone/btMultiBodyJointLimitConstraint.h>
 #include <string>
 #include <vector>
+#include <utility>
 #include "../core/PhysicsWorld.h"
 
 // Specifica di un singolo link/giunto, prodotta da tools/urdf_parser.py
@@ -11,7 +12,8 @@
 // riceve solo numeri gia' pronti.
 struct JointSpec {
     std::string name;
-    btVector3 axis;              // asse di rotazione nel frame del parent
+    btVector3 axis;              // asse di rotazione, nel frame LOCALE del link (convenzione URDF)
+    btQuaternion rotParentToThis = btQuaternion::getIdentity(); // orientamento di questo link relativo al parent, a giunto=0 (da URDF <origin rpy=.../>)
     btVector3 pivotInParent;     // offset del giunto nel frame del parent
     btVector3 pivotInChild;      // offset del giunto nel frame del child (di norma origine link)
     float lowerLimit = 1.0f;     // lowerLimit > upperLimit => giunto libero (convenzione Bullet)
@@ -42,6 +44,9 @@ public:
 
     // Trasformazione mondo dell'end-effector (ultimo link aggiunto).
     btTransform getEndEffectorTransform() const;
+    // Stessa informazione, in una forma che pybind11 sa convertire senza
+    // bisogno di un caster per btTransform (che non abbiamo scritto).
+    std::pair<btVector3, btQuaternion> getEndEffectorPose() const;
     int numLinks() const { return static_cast<int>(links.size()); }
 
 private:
