@@ -1,0 +1,20 @@
+﻿# Build
+build/
+CMakeUserPresets.json
+
+# Python
+__pycache__/
+*.pyc
+.pytest_cache/
+*.egg-info/
+
+# Mesh CAD pesanti — si riscaricano con le istruzioni in assets/README.md,
+# non ha senso versionarle (sono binari grossi, GitHub si lamenta)
+assets/**/meshes/
+assets/**/collision/
+assets/**/visual/
+
+# IDE
+.vscode/
+*.pdb
+*.ilk

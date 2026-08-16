@@ -1,19 +1,4 @@
-"""
-Parser URDF minimale.
-
-Non usiamo librerie come urdfpy/yourdfpy: dipendono da pacchi (pycollada,
-networkx pinnati a versioni vecchie) che sono una fonte di grattacapi in un
-progetto che deve restare buildabile per mesi. Ci serve un sottoinsieme
-piccolo e stabile di URDF (link, giunti revolute, assi, limiti, path mesh):
-lo leggiamo a mano con xml.etree, che e' nella standard library e non si
-rompe mai.
-
-Uso tipico:
-    robot = parse_urdf("assets/ur5/ur5.urdf")
-    for joint in robot.joints_in_chain_order():
-        ...  # passa i dati a JointSpec lato C++ via i binding
-"""
-from __future__ import annotations
+﻿from __future__ import annotations
 from dataclasses import dataclass, field
 import xml.etree.ElementTree as ET
 
@@ -21,11 +6,11 @@ import xml.etree.ElementTree as ET
 @dataclass
 class UrdfJoint:
     name: str
-    type: str                 # "revolute", "continuous", "fixed", ...
+    type: str
     parent: str
     child: str
     axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
-    xyz: tuple[float, float, float] = (0.0, 0.0, 0.0)   # origin del giunto nel frame parent
+    xyz: tuple[float, float, float] = (0.0, 0.0, 0.0)
     rpy: tuple[float, float, float] = (0.0, 0.0, 0.0)
     lower: float = 0.0
     upper: float = 0.0
@@ -48,22 +33,23 @@ class UrdfRobot:
     joints: list[UrdfJoint] = field(default_factory=list)
 
     def joints_in_chain_order(self) -> list[UrdfJoint]:
-        """Ordina i giunti dalla base all'end-effector seguendo parent->child.
-        Assume una catena seriale semplice (vero per un braccio a 6 assi,
-        non per strutture ad albero con diramazioni — se in futuro serve
-        un gripper con dita multiple, questo va esteso)."""
-        by_parent = {j.parent: j for j in self.joints}
-        ordered = []
-        # trova la root: un link che non e' mai "child" di nessun giunto
+        from collections import defaultdict
+        children_joints: dict[str, list[UrdfJoint]] = defaultdict(list)
+        for j in self.joints:
+            children_joints[j.parent].append(j)
+
         children = {j.child for j in self.joints}
         roots = [l for l in self.links if l not in children]
         if not roots:
-            return self.joints  # fallback: ordine originale
-        current = roots[0]
-        while current in by_parent:
-            j = by_parent[current]
-            ordered.append(j)
-            current = j.child
+            return self.joints
+
+        ordered: list[UrdfJoint] = []
+        queue = list(roots)
+        while queue:
+            link = queue.pop(0)
+            for j in children_joints.get(link, []):
+                ordered.append(j)
+                queue.append(j.child)
         return ordered
 
 

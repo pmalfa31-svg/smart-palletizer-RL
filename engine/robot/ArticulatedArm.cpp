@@ -61,7 +61,6 @@ void ArticulatedArm::finalizeBuild() {
             auto* limit = new btMultiBodyJointLimitConstraint(multiBody, i, s.lowerLimit, s.upperLimit);
             physicsWorld.raw()->addMultiBodyConstraint(limit);
         }
-        multiBody->setJointMaxForce(i, s.maxMotorForce);
     }
 
     multiBody->finalizeMultiDof();
@@ -105,7 +104,13 @@ void ArticulatedArm::reset() {
     }
     multiBody->setBasePos(basePos);
     multiBody->setBaseWorldTransform(btTransform(btQuaternion::getIdentity(), basePos));
-    multiBody->forwardKinematics(multiBody->scratch_q(), multiBody->scratch_m());
+
+    // FIX: forwardKinematics vuole due array vuoti passati per riferimento
+    // (li riempie lei), non degli "scratch buffer" interni — non esistono
+    // scratch_q()/scratch_m() come li avevo scritti.
+    btAlignedObjectArray<btQuaternion> scratchQ;
+    btAlignedObjectArray<btVector3> scratchM;
+    multiBody->forwardKinematics(scratchQ, scratchM);
 }
 
 btTransform ArticulatedArm::getEndEffectorTransform() const {

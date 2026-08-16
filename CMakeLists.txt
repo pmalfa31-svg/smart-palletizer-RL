@@ -9,6 +9,12 @@ endif()
 
 include(FetchContent)
 
+# bullet3 dichiara "cmake_minimum_required" con una versione troppo vecchia
+# per le CMake recenti (4.x ha rimosso il supporto a <3.5). Non possiamo
+# modificare il CMakeLists.txt di bullet3 (e' scaricato via FetchContent),
+# quindi diciamo esplicitamente a CMake di accettare policy fino a 3.5.
+set(CMAKE_POLICY_VERSION_MINIMUM 3.5 CACHE STRING "" FORCE)
+
 # ---------------------------------------------------------------------------
 # Bullet3 — ci serve SOLO BulletDynamics/BulletCollision/LinearMath/
 # Bullet3Common. btMultiBody (Featherstone) e' gia' incluso in BulletDynamics
