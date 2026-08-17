@@ -5,18 +5,14 @@ giunto pronte per essere passate a JointSpec lato C++.
 Il punto delicato: un URDF reale intercala giunti "revolute" (i veri assi
 motorizzati) con giunti "fixed" che portano offset/rotazioni non banali
 (es. in ur5.urdf, 'base_link-base_link_inertia' e' fixed ma introduce una
-rotazione di 180 gradi — vedi commento nel file URDF stesso). Non possiamo
-scartare i giunti fissi: li FONDIAMO nel giunto revolute successivo,
-accumulando le trasformazioni. Quelli fissi DOPO l'ultimo giunto revolute
-(flange, tool0) diventano un "tool_offset" separato — utile perche' e'
-letteralmente il punto in cui monteremo la ventosa/pinza.
+rotazione di 180 gradi). Non possiamo scartare i giunti fissi: li FONDIAMO
+nel giunto revolute successivo, accumulando le trasformazioni. Quelli fissi
+DOPO l'ultimo giunto revolute (flange, tool0) diventano un "tool_offset"
+separato — e' il punto in cui monteremo la ventosa/pinza.
 
 ATTENZIONE - approssimazione dichiarata: trattiamo l'origine geometrica di
-ogni link (quella usata per orientare mesh/giunti nell'URDF) come
-coincidente con il suo centro di massa. E' un'approssimazione comune per
-una prima versione funzionante, ma non e' esatta (l'URDF puo' specificare
-un <inertial><origin> diverso da quello del link). Se in futuro serve
-precisione dinamica reale (non solo visiva), va tolta.
+ogni link come coincidente con il suo centro di massa. Comune per una prima
+versione funzionante, non esatta al 100%.
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -72,11 +68,9 @@ class PendingTransform:
     """Trasformazione accumulata da giunti fissi non ancora "consumati"
     da un giunto revolute."""
     translation: tuple = (0.0, 0.0, 0.0)
-    rotation: tuple = (0.0, 0.0, 0.0, 1.0)  # identita'
+    rotation: tuple = (0.0, 0.0, 0.0, 1.0)
 
     def compose(self, xyz: tuple, rpy: tuple) -> "PendingTransform":
-        """Compone questa trasformazione con la successiva (xyz, rpy) di
-        un giunto figlio, nell'ordine parent -> figlio."""
         q_step = quat_from_rpy(*rpy)
         new_rotation = quat_multiply(self.rotation, q_step)
         rotated_xyz = quat_rotate_vec(self.rotation, xyz)
@@ -89,20 +83,20 @@ class JointSpecData:
     """Rappecchia JointSpec del C++, in una forma serializzabile facile
     da passare attraverso i binding pybind11."""
     name: str
+    link_name: str
     axis: tuple
-    rot_parent_to_this: tuple  # quaternione (x, y, z, w)
+    rot_parent_to_this: tuple
     pivot_in_parent: tuple
     lower_limit: float
     upper_limit: float
     max_motor_force: float
+    link_mass: float = 1.0
+    link_inertia: tuple = (0.05, 0.05, 0.05)
+    convex_hulls: list = None
 
 
 def build_joint_specs(robot: UrdfRobot) -> tuple[list[JointSpecData], dict]:
-    """Ritorna (lista di JointSpecData per i giunti revolute reali,
-    tool_offset = trasformazione fissa residua dall'ultimo link mobile
-    al vero end-effector/tool0)."""
     joints = robot.joints_in_chain_order()
-
     specs: list[JointSpecData] = []
     pending = PendingTransform()
 
@@ -116,14 +110,22 @@ def build_joint_specs(robot: UrdfRobot) -> tuple[list[JointSpecData], dict]:
 
         full = pending.compose(j.xyz, j.rpy)
 
+        # Massa/inerzia reali dal <inertial> del link URDF, se presenti.
+        link = robot.links.get(j.child)
+        link_mass = link.mass if (link and link.mass > 0.0) else 1.0
+        link_inertia = link.inertia_diag if (link and any(link.inertia_diag)) else (0.05, 0.05, 0.05)
+
         specs.append(JointSpecData(
             name=j.name,
+            link_name=j.child,
             axis=j.axis,
             rot_parent_to_this=full.rotation,
             pivot_in_parent=full.translation,
             lower_limit=j.lower,
             upper_limit=j.upper,
             max_motor_force=j.effort,
+            link_mass=link_mass,
+            link_inertia=link_inertia,
         ))
         pending = PendingTransform()
 
@@ -132,6 +134,23 @@ def build_joint_specs(robot: UrdfRobot) -> tuple[list[JointSpecData], dict]:
         "rotation": pending.rotation,
     }
     return specs, tool_offset
+
+
+def attach_collision_hulls(specs: list[JointSpecData], collision_dir: str) -> None:
+    """Carica i file *.json prodotti da mesh_preprocess.py e li assegna a
+    ciascuno spec (in-place), guardando link_name."""
+    import json
+    import os
+
+    for spec in specs:
+        path = os.path.join(collision_dir, f"{spec.link_name}.json")
+        if not os.path.exists(path):
+            print(f"[WARN] nessun hull trovato per '{spec.link_name}' ({path}); collision shape vuota")
+            spec.convex_hulls = []
+            continue
+        with open(path) as f:
+            data = json.load(f)
+        spec.convex_hulls = data["hulls"]
 
 
 if __name__ == "__main__":
@@ -143,7 +162,7 @@ if __name__ == "__main__":
 
     print(f"{len(specs)} giunti motorizzati trovati:")
     for s in specs:
-        print(f"  {s.name}: asse={s.axis} pivot_parent={tuple(round(v, 4) for v in s.pivot_in_parent)} "
-              f"rot={tuple(round(v, 4) for v in s.rot_parent_to_this)} "
+        print(f"  {s.name}: massa={s.link_mass:.3f}kg asse={s.axis} "
+              f"pivot_parent={tuple(round(v, 4) for v in s.pivot_in_parent)} "
               f"limiti=[{s.lower_limit:.3f}, {s.upper_limit:.3f}]")
     print(f"\nOffset fino al tool (end-effector reale): {tool_offset}")
