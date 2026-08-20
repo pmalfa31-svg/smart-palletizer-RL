@@ -5,12 +5,12 @@ nei primi step di simulazione.
 
 Esegui da dentro tools/ (come urdf_to_joint_specs.py):
     cd tools
-    python build_and_test_arm.py ..\assets\ur5\ur5.urdf ..\assets\ur5\collision
+    python build_and_test_arm.py ..\assets\ur5\ur5.urdf ..\assets\ur5\collision [force_override]
 
 Serve palletizer_core compilato nel PYTHONPATH — vedi istruzioni in chat.
 """
 import sys
-sys.path.insert(0, "../build/lib/Debug")
+sys.path.insert(0, "../build/lib/Release")
 
 from urdf_parser import parse_urdf
 from urdf_to_joint_specs import build_joint_specs, attach_collision_hulls
@@ -20,7 +20,7 @@ import palletizer_core as pc
 
 def main():
     if len(sys.argv) < 3:
-        print("Uso: python build_and_test_arm.py <urdf> <cartella_collision>")
+        print("Uso: python build_and_test_arm.py <urdf> <cartella_collision> [force_override]")
         sys.exit(1)
 
     urdf_path, collision_dir = sys.argv[1], sys.argv[2]
@@ -33,6 +33,14 @@ def main():
     print(f"{len(specs)} giunti, {n_with_hulls} con collision shape reale "
           f"({len(specs) - n_with_hulls} vuoti — normale se mesh_preprocess non e' ancora girato su tutto)")
 
+    print("\nValori max_motor_force letti dall'URDF (<limit effort=...>):")
+    for s in specs:
+        print(f"  {s.name}: {s.max_motor_force}")
+
+    force_override = float(sys.argv[3]) if len(sys.argv) > 3 else None
+    if force_override is not None:
+        print(f"\n[TEST] Sovrascrivo max_motor_force a {force_override} per tutti i giunti.")
+
     world = pc.PhysicsWorld()
     world.add_ground_plane(0.0)
 
@@ -44,12 +52,12 @@ def main():
         js.axis = s.axis
         js.rot_parent_to_this = s.rot_parent_to_this
         js.pivot_in_parent = s.pivot_in_parent
-        js.pivot_in_child = (0.0, 0.0, 0.0)
+        js.pivot_in_child = s.pivot_in_child
         js.lower_limit = s.lower_limit
         js.upper_limit = s.upper_limit
-        js.max_motor_force = s.max_motor_force
-        js.link_mass = s.link_mass  # ora reale, dal <inertial> dell'URDF
-        js.link_inertia = s.link_inertia  # idem
+        js.max_motor_force = force_override if force_override is not None else s.max_motor_force
+        js.link_mass = s.link_mass
+        js.link_inertia = s.link_inertia
         js.convex_hulls = s.convex_hulls or []
         arm.add_link(js)
 
@@ -60,30 +68,37 @@ def main():
     print(f"Posa end-effector a riposo (giunti=0): pos={tuple(round(v, 4) for v in pos0)} "
           f"quat={tuple(round(v, 4) for v in rot0)}")
 
-    print("\nFaccio girare 60 step di simulazione (1 secondo) senza comandi motore. "
-          "ATTENZIONE: senza un motore che regge la posa, il braccio si affloscia\n"
-          "sotto gravita' — e' fisica corretta per un braccio spento, non un bug. "
-          "Qui controlliamo solo che la simulazione non esploda (NaN/valori assurdi).")
+    print("\nAttivo i motori a target-velocita'=0 su tutti i giunti (mantenimento posa)...")
+    for i in range(len(specs)):
+        arm.set_joint_target_velocity(i, 0.0)
+
+    joints_before = arm.get_joint_positions()
+    print(f"Angoli giunti PRIMA (rad): {[round(v, 4) for v in joints_before]}")
+
     for _ in range(60):
         world.step_simulation(1.0 / 60.0, 10)
 
+    joints_after = arm.get_joint_positions()
+    print(f"Angoli giunti DOPO (rad):  {[round(v, 4) for v in joints_after]}")
+    for i, (name, before, after) in enumerate(zip([s.name for s in specs], joints_before, joints_after)):
+        moved = abs(after - before)
+        flag = " <-- si muove parecchio" if moved > 0.1 else ""
+        print(f"  [{i}] {name}: {before:.4f} -> {after:.4f} (delta {moved:.4f}){flag}")
+
     pos1, rot1 = arm.get_end_effector_pose()
-    print(f"Posa end-effector dopo 1s: pos={tuple(round(v, 4) for v in pos1)} "
+    print(f"\nPosa end-effector dopo 1s: pos={tuple(round(v, 4) for v in pos1)} "
           f"quat={tuple(round(v, 4) for v in rot1)}")
 
     import math
+    drift = sum((a - b) ** 2 for a, b in zip(pos0, pos1)) ** 0.5
     values_ok = all(math.isfinite(v) for v in (*pos1, *rot1))
-    magnitude_ok = all(abs(v) < 10.0 for v in pos1)
 
     if not values_ok:
-        print("\n[ERRORE] Valori NaN/infiniti nella posa — questo SI' e' un bug reale "
-              "(pivot/asse/inerzia rotti, non solo gravita').")
-    elif not magnitude_ok:
-        print(f"\n[ATTENZIONE] Il braccio si e' spostato molto (>10m) — troppo anche per "
-              f"un collasso sotto gravita' senza motori. Controllare masse/inerzie placeholder.")
+        print("\n[ERRORE] Valori NaN/infiniti — bug reale (pivot/asse/inerzia).")
+    elif drift > 0.05:
+        print(f"\n[ATTENZIONE] Drift di {drift:.4f}m nonostante i motori attivi.")
     else:
-        print(f"\n[OK] Nessuna esplosione numerica. Il braccio si e' afflosciato sotto "
-              f"gravita' (atteso, senza motori attivi) ma resta in valori fisicamente plausibili.")
+        print(f"\n[OK] I motori reggono la posa: drift {drift:.5f}m, trascurabile.")
 
 
 if __name__ == "__main__":

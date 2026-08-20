@@ -5,9 +5,7 @@ Perche' offline e in Python: V-HACD e' lento (secondi-minuti per mesh) e va
 girato UNA VOLTA per asset, non ad ogni avvio del motore. Il C++ carica solo
 il risultato gia' pronto (liste di hull convessi), mai la mesh grezza.
 
-Richiede: pip install trimesh vhacdx  (o "pip install trimesh[easy]" a
-seconda della piattaforma — verificare quale wheel VHACD gira su Windows
-prima di fidarsi ciecamente di questo comando).
+Richiede: pip install trimesh vhacdx
 
 Uso su un singolo file:
     python tools/mesh_preprocess.py assets/ur5/meshes/forearm.stl \
@@ -15,7 +13,7 @@ Uso su un singolo file:
 
 Uso batch su tutto un URDF (risolve automaticamente i path package://):
     python tools/mesh_preprocess.py --urdf assets/ur5/ur5.urdf \
-        --meshes-root assets/ur5/meshes --out-dir assets/ur5/collision
+        --meshes-root assets/ur5/meshes --out-dir assets/ur5/collision [--simple]
 """
 from __future__ import annotations
 import argparse
@@ -27,13 +25,6 @@ from urdf_parser import parse_urdf
 
 
 def resolve_mesh_uri(uri: str, local_meshes_root: str) -> str:
-    """Converte un URI URDF tipo 'package://ur_description/meshes/ur5/
-    collision/base.stl' nel path locale sotto assets/ur5/meshes/, coerente
-    con come abbiamo scaricato le mesh (solo la sottocartella
-    ur_description/meshes/<robot>/, non l'intero pacchetto ROS).
-
-    package://<pacchetto>/meshes/<nome_robot>/<resto> -> <local_meshes_root>/<resto>
-    Se l'URI non e' un package://, la trattiamo gia' come path locale."""
     if not uri.startswith("package://"):
         return uri
     parts = uri[len("package://"):].split("/")
@@ -41,20 +32,23 @@ def resolve_mesh_uri(uri: str, local_meshes_root: str) -> str:
     return os.path.join(local_meshes_root, rest)
 
 
-def decompose(mesh_path: str) -> list[list[list[float]]]:
+def decompose(mesh_path: str, simple: bool = False) -> list[list[list[float]]]:
     mesh = trimesh.load(mesh_path, force="mesh")
+
+    if simple:
+        return [mesh.convex_hull.vertices.tolist()]
+
     try:
         pieces = mesh.convex_decomposition()
         hulls = [p.convex_hull for p in pieces]
-    except Exception as exc:  # noqa: BLE001 - vogliamo il fallback, non il crash
+    except Exception as exc:  # noqa: BLE001
         print(f"[WARN] convex_decomposition fallita ({exc}); fallback a singolo hull")
         hulls = [mesh.convex_hull]
+
     return [hull.vertices.tolist() for hull in hulls]
 
 
-def process_urdf(urdf_path: str, meshes_root: str, out_dir: str) -> None:
-    """Decompone la mesh di COLLISIONE di ogni link dell'URDF (non quella
-    visuale — per la fisica ci serve solo quella) e salva un JSON per link."""
+def process_urdf(urdf_path: str, meshes_root: str, out_dir: str, simple: bool = False) -> None:
     os.makedirs(out_dir, exist_ok=True)
     robot = parse_urdf(urdf_path)
 
@@ -69,7 +63,8 @@ def process_urdf(urdf_path: str, meshes_root: str, out_dir: str) -> None:
             skipped += 1
             continue
 
-        hulls = decompose(local_path)
+        print(f"[...] decompongo '{name}' ({'singolo hull' if simple else chr(39) + 'V-HACD, puo volerci un po' + chr(39)})")
+        hulls = decompose(local_path, simple=simple)
         out_path = os.path.join(out_dir, f"{name}.json")
         with open(out_path, "w") as f:
             json.dump({"hulls": hulls}, f)
@@ -88,17 +83,19 @@ def main():
     parser.add_argument("--urdf", help="Path a un URDF (modalita' batch)")
     parser.add_argument("--meshes-root", help="Cartella locale delle mesh (modalita' batch)")
     parser.add_argument("--out-dir", help="Cartella di output (modalita' batch)")
+    parser.add_argument("--simple", action="store_true",
+                         help="Salta V-HACD, usa subito un singolo hull (veloce, fedelta' minore)")
     args = parser.parse_args()
 
     if args.urdf:
         if not (args.meshes_root and args.out_dir):
             parser.error("--urdf richiede anche --meshes-root e --out-dir")
-        process_urdf(args.urdf, args.meshes_root, args.out_dir)
+        process_urdf(args.urdf, args.meshes_root, args.out_dir, simple=args.simple)
         return
 
     if not (args.mesh_path and args.out):
         parser.error("modalita' file singolo: servono mesh_path e --out")
-    hulls = decompose(args.mesh_path)
+    hulls = decompose(args.mesh_path, simple=args.simple)
     with open(args.out, "w") as f:
         json.dump({"hulls": hulls}, f)
     n_verts = sum(len(h) for h in hulls)

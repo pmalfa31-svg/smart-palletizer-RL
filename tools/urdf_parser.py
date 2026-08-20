@@ -1,4 +1,19 @@
-﻿from __future__ import annotations
+﻿"""
+Parser URDF minimale.
+
+Non usiamo librerie come urdfpy/yourdfpy: dipendono da pacchi (pycollada,
+networkx pinnati a versioni vecchie) che sono una fonte di grattacapi in un
+progetto che deve restare buildabile per mesi. Ci serve un sottoinsieme
+piccolo e stabile di URDF (link, giunti revolute, assi, limiti, path mesh):
+lo leggiamo a mano con xml.etree, che e' nella standard library e non si
+rompe mai.
+
+Uso tipico:
+    robot = parse_urdf("assets/ur5/ur5.urdf")
+    for joint in robot.joints_in_chain_order():
+        ...  # passa i dati a JointSpec lato C++ via i binding
+"""
+from __future__ import annotations
 from dataclasses import dataclass, field
 import xml.etree.ElementTree as ET
 
@@ -22,6 +37,7 @@ class UrdfLink:
     name: str
     mass: float = 0.0
     inertia_diag: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    com_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
     visual_mesh: str | None = None
     collision_mesh: str | None = None
 
@@ -80,6 +96,9 @@ def parse_urdf(path: str) -> UrdfRobot:
                     float(inertia_el.get("iyy", "0")),
                     float(inertia_el.get("izz", "0")),
                 )
+            origin_el = inertial.find("origin")
+            if origin_el is not None:
+                link.com_offset = _parse_floats(origin_el.get("xyz"), (0.0, 0.0, 0.0))
 
         visual = link_el.find("visual/geometry/mesh")
         if visual is not None:

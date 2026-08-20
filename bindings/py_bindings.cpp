@@ -115,6 +115,7 @@ PYBIND11_MODULE(palletizer_core, m) {
         .def("set_joint_target_velocity", &ArticulatedArm::setJointTargetVelocity)
         .def("reset", &ArticulatedArm::reset)
         .def("get_end_effector_pose", &ArticulatedArm::getEndEffectorPose)
+        .def("get_joint_positions", &ArticulatedArm::getJointPositions)
         .def("num_links", &ArticulatedArm::numLinks);
 
     // TODO prossima sessione: la classe "PalletizerScene" che compone

@@ -2,28 +2,23 @@
 #include <BulletDynamics/Featherstone/btMultiBody.h>
 #include <BulletDynamics/Featherstone/btMultiBodyLinkCollider.h>
 #include <BulletDynamics/Featherstone/btMultiBodyJointLimitConstraint.h>
+#include <BulletDynamics/Featherstone/btMultiBodyJointMotor.h>
 #include <string>
 #include <vector>
 #include <utility>
 #include "../core/PhysicsWorld.h"
 
-// Specifica di un singolo link/giunto, prodotta da tools/urdf_parser.py
-// e passata dal binding Python. NON facciamo parsing XML in C++: il motore
-// riceve solo numeri gia' pronti.
 struct JointSpec {
     std::string name;
-    btVector3 axis;              // asse di rotazione, nel frame LOCALE del link (convenzione URDF)
-    btQuaternion rotParentToThis = btQuaternion::getIdentity(); // orientamento di questo link relativo al parent, a giunto=0 (da URDF <origin rpy=.../>)
-    btVector3 pivotInParent;     // offset del giunto nel frame del parent
-    btVector3 pivotInChild;      // offset del giunto nel frame del child (di norma origine link)
-    float lowerLimit = 1.0f;     // lowerLimit > upperLimit => giunto libero (convenzione Bullet)
+    btVector3 axis;
+    btQuaternion rotParentToThis = btQuaternion::getIdentity();
+    btVector3 pivotInParent;
+    btVector3 pivotInChild;
+    float lowerLimit = 1.0f;
     float upperLimit = -1.0f;
     float maxMotorForce = 200.0f;
     float linkMass = 1.0f;
-    btVector3 linkInertia;       // diagonale del tensore d'inerzia (da mesh/CAD, non stimata a mano)
-    // Collision shape del link: elenco di hull convessi pre-decomposti
-    // (vedi tools/mesh_preprocess.py — V-HACD offline, mai mesh concava
-    // su un corpo dinamico).
+    btVector3 linkInertia;
     std::vector<std::vector<btVector3>> convexHulls;
 };
 
@@ -33,27 +28,25 @@ public:
                     const btVector3& basePosition);
     ~ArticulatedArm();
 
-    // Aggiunge link in ordine catena cinematica (dalla base all'end-effector).
     void addLink(const JointSpec& spec);
-
-    // Da chiamare una volta finita la catena: registra i collider nel mondo.
     void finalizeBuild();
 
     void setJointTargetVelocity(int jointIndex, float velocity);
     void reset();
 
-    // Trasformazione mondo dell'end-effector (ultimo link aggiunto).
     btTransform getEndEffectorTransform() const;
-    // Stessa informazione, in una forma che pybind11 sa convertire senza
-    // bisogno di un caster per btTransform (che non abbiamo scritto).
     std::pair<btVector3, btQuaternion> getEndEffectorPose() const;
     int numLinks() const { return static_cast<int>(links.size()); }
+
+    std::vector<float> getJointPositions() const;
 
 private:
     PhysicsWorld& physicsWorld;
     btMultiBody* multiBody = nullptr;
     std::vector<JointSpec> links;
     std::vector<btMultiBodyLinkCollider*> colliders;
+    std::vector<btMultiBodyJointMotor*> motors;
+    std::vector<btMultiBodyConstraint*> ownedConstraints;
     btVector3 basePos;
     bool built = false;
 };

@@ -10,9 +10,16 @@ nel giunto revolute successivo, accumulando le trasformazioni. Quelli fissi
 DOPO l'ultimo giunto revolute (flange, tool0) diventano un "tool_offset"
 separato — e' il punto in cui monteremo la ventosa/pinza.
 
-ATTENZIONE - approssimazione dichiarata: trattiamo l'origine geometrica di
-ogni link come coincidente con il suo centro di massa. Comune per una prima
-versione funzionante, non esatta al 100%.
+ATTENZIONE - approssimazione ancora presente: il tensore d'inerzia
+(ixx/iyy/izz) viene usato cosi' com'e' dall'URDF, ASSUMENDO che sia gia'
+espresso nel frame del link. In realta' l'URDF puo' specificare una
+rotazione anche per il frame inerziale (<inertial><origin rpy=...>,
+es. upper_arm_link ha rpy="0 1.5707963267948966 0") — quel caso NON e'
+gestito: ruotare correttamente un tensore diagonale produce in generale
+una matrice piena, che l'interfaccia di Bullet usata qui (btVector3
+diagonale) non rappresenta. La posizione del baricentro (com_offset) e'
+invece gestita correttamente qui sotto — era il problema piu' grosso e
+ora e' risolto.
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -22,8 +29,6 @@ from urdf_parser import UrdfRobot, UrdfJoint
 
 
 def quat_from_rpy(roll: float, pitch: float, yaw: float) -> tuple[float, float, float, float]:
-    """Converte roll-pitch-yaw (convenzione URDF: R = Rz(yaw)*Ry(pitch)*Rx(roll),
-    la stessa di ROS tf 'sxyz') in un quaternione (x, y, z, w)."""
     cr, sr = math.cos(roll * 0.5), math.sin(roll * 0.5)
     cp, sp = math.cos(pitch * 0.5), math.sin(pitch * 0.5)
     cy, sy = math.cos(yaw * 0.5), math.sin(yaw * 0.5)
@@ -35,7 +40,6 @@ def quat_from_rpy(roll: float, pitch: float, yaw: float) -> tuple[float, float, 
 
 
 def quat_multiply(q1: tuple, q2: tuple) -> tuple:
-    """q1 * q2, entrambi (x, y, z, w). Applica prima q2, poi q1."""
     x1, y1, z1, w1 = q1
     x2, y2, z2, w2 = q2
     return (
@@ -47,7 +51,6 @@ def quat_multiply(q1: tuple, q2: tuple) -> tuple:
 
 
 def quat_rotate_vec(q: tuple, v: tuple) -> tuple:
-    """Ruota il vettore v col quaternione q (x, y, z, w)."""
     x, y, z, w = q
     vx, vy, vz = v
     uvx = y * vz - z * vy
@@ -65,8 +68,6 @@ def quat_rotate_vec(q: tuple, v: tuple) -> tuple:
 
 @dataclass
 class PendingTransform:
-    """Trasformazione accumulata da giunti fissi non ancora "consumati"
-    da un giunto revolute."""
     translation: tuple = (0.0, 0.0, 0.0)
     rotation: tuple = (0.0, 0.0, 0.0, 1.0)
 
@@ -80,8 +81,6 @@ class PendingTransform:
 
 @dataclass
 class JointSpecData:
-    """Rappecchia JointSpec del C++, in una forma serializzabile facile
-    da passare attraverso i binding pybind11."""
     name: str
     link_name: str
     axis: tuple
@@ -90,6 +89,7 @@ class JointSpecData:
     lower_limit: float
     upper_limit: float
     max_motor_force: float
+    pivot_in_child: tuple = (0.0, 0.0, 0.0)
     link_mass: float = 1.0
     link_inertia: tuple = (0.05, 0.05, 0.05)
     convex_hulls: list = None
@@ -110,17 +110,26 @@ def build_joint_specs(robot: UrdfRobot) -> tuple[list[JointSpecData], dict]:
 
         full = pending.compose(j.xyz, j.rpy)
 
-        # Massa/inerzia reali dal <inertial> del link URDF, se presenti.
         link = robot.links.get(j.child)
         link_mass = link.mass if (link and link.mass > 0.0) else 1.0
         link_inertia = link.inertia_diag if (link and any(link.inertia_diag)) else (0.05, 0.05, 0.05)
+
+        # FIX: pivotInParent/pivotInChild devono essere misurati dal vero
+        # BARICENTRO dei link, non dalla loro origine geometrica.
+        parent_link = robot.links.get(j.parent)
+        parent_com = parent_link.com_offset if parent_link else (0.0, 0.0, 0.0)
+        child_com = link.com_offset if link else (0.0, 0.0, 0.0)
+
+        pivot_in_parent = tuple(p - c for p, c in zip(full.translation, parent_com))
+        pivot_in_child = child_com
 
         specs.append(JointSpecData(
             name=j.name,
             link_name=j.child,
             axis=j.axis,
             rot_parent_to_this=full.rotation,
-            pivot_in_parent=full.translation,
+            pivot_in_parent=pivot_in_parent,
+            pivot_in_child=pivot_in_child,
             lower_limit=j.lower,
             upper_limit=j.upper,
             max_motor_force=j.effort,
@@ -137,8 +146,6 @@ def build_joint_specs(robot: UrdfRobot) -> tuple[list[JointSpecData], dict]:
 
 
 def attach_collision_hulls(specs: list[JointSpecData], collision_dir: str) -> None:
-    """Carica i file *.json prodotti da mesh_preprocess.py e li assegna a
-    ciascuno spec (in-place), guardando link_name."""
     import json
     import os
 
@@ -162,7 +169,7 @@ if __name__ == "__main__":
 
     print(f"{len(specs)} giunti motorizzati trovati:")
     for s in specs:
-        print(f"  {s.name}: massa={s.link_mass:.3f}kg asse={s.axis} "
-              f"pivot_parent={tuple(round(v, 4) for v in s.pivot_in_parent)} "
+        print(f"  {s.name}: pivot_parent={tuple(round(v, 4) for v in s.pivot_in_parent)} "
+              f"pivot_child={tuple(round(v, 4) for v in s.pivot_in_child)} "
               f"limiti=[{s.lower_limit:.3f}, {s.upper_limit:.3f}]")
     print(f"\nOffset fino al tool (end-effector reale): {tool_offset}")

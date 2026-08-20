@@ -1,4 +1,4 @@
-#include "PhysicsWorld.h"
+﻿#include "PhysicsWorld.h"
 
 PhysicsWorld::PhysicsWorld() {
     collisionConfig = std::make_unique<btDefaultCollisionConfiguration>();
@@ -9,6 +9,15 @@ PhysicsWorld::PhysicsWorld() {
     world = std::make_unique<btMultiBodyDynamicsWorld>(
         dispatcher.get(), broadphase.get(), solver.get(), collisionConfig.get());
     world->setGravity(btVector3(0, -9.81f, 0));
+
+    // NOTA: avevo alzato questo a 100 pensando che il default (10) fosse
+    // insufficiente per far propagare la correzione dei motori lungo la
+    // catena. Test empirico ha mostrato il CONTRARIO: con 100 iterazioni
+    // anche i giunti che tenevano bene (shoulder_pan/lift) sono peggiorati
+    // — piu' iterazioni possono amplificare un overshoot invece di
+    // smorzarlo, se il motore e' gia' vicino al limite di stabilita'.
+    // Tornato al default: il vero problema e' altrove (probabilmente il
+    // gain "kd" di setVelocityTarget, non l'iterazione del solver).
 }
 
 PhysicsWorld::~PhysicsWorld() {
@@ -18,9 +27,6 @@ PhysicsWorld::~PhysicsWorld() {
         delete groundBody;
     }
     delete groundShape;
-    // world/solver/broadphase/dispatcher/collisionConfig: unique_ptr, auto-cleanup
-    // (l'ordine di distruzione dei membri e' gia' quello corretto: world
-    // prima di dispatcher/broadphase/collisionConfig, come richiesto da Bullet)
 }
 
 void PhysicsWorld::stepSimulation(float dt, int maxSubSteps) {
