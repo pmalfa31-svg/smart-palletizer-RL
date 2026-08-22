@@ -114,6 +114,8 @@ PYBIND11_MODULE(palletizer_core, m) {
         .def("add_link", &ArticulatedArm::addLink)
         .def("finalize_build", &ArticulatedArm::finalizeBuild)
         .def("set_joint_target_velocity", &ArticulatedArm::setJointTargetVelocity)
+        .def("set_joint_target_position", &ArticulatedArm::setJointTargetPosition,
+             py::arg("joint_index"), py::arg("position"), py::arg("kp") = 0.3f)
         .def("reset", &ArticulatedArm::reset)
         .def("get_end_effector_pose", &ArticulatedArm::getEndEffectorPose)
         .def("get_joint_positions", &ArticulatedArm::getJointPositions)

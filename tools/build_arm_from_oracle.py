@@ -46,7 +46,11 @@ def main():
         if js.joint_type == "revolute":
             js.lower_limit = 1.0
             js.upper_limit = -1.0
-            js.max_motor_force = 150.0
+            real_effort = {
+                "shoulder_pan_joint": 150.0, "shoulder_lift_joint": 150.0, "elbow_joint": 150.0,
+                "wrist_1_joint": 28.0, "wrist_2_joint": 28.0, "wrist_3_joint": 28.0,
+            }
+            js.max_motor_force = real_effort.get(j["name"], 150.0)
 
         link_guess = j["name"].replace("_joint", "_link")
         hull_path = os.path.join(collision_dir, f"{link_guess}.json")
@@ -63,7 +67,7 @@ def main():
 
     n = arm.num_links()
     for i in range(n):
-        arm.set_joint_target_velocity(i, 0.0)
+        arm.set_joint_target_position(i, 0.0, 0.3)  # no-op sui fissi, ok sui revolute
 
     joints_before = arm.get_joint_positions()
     print(f"Angoli PRIMA: {[round(v, 4) for v in joints_before]}")

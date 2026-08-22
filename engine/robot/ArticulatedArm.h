@@ -33,6 +33,7 @@ public:
     void finalizeBuild();
 
     void setJointTargetVelocity(int jointIndex, float velocity);
+    void setJointTargetPosition(int jointIndex, float position, float kp = 0.3f);
     void reset();
 
     btTransform getEndEffectorTransform() const;

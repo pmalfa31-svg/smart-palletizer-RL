@@ -105,6 +105,12 @@ void ArticulatedArm::setJointTargetVelocity(int jointIndex, float velocity) {
     motors[jointIndex]->setVelocityTarget(velocity);
 }
 
+void ArticulatedArm::setJointTargetPosition(int jointIndex, float position, float kp) {
+    if (!multiBody || jointIndex < 0 || jointIndex >= static_cast<int>(motors.size())) return;
+    if (motors[jointIndex] == nullptr) return;
+    motors[jointIndex]->setPositionTarget(position, kp);
+}
+
 void ArticulatedArm::reset() {
     if (!multiBody) return;
     for (int i = 0; i < multiBody->getNumLinks(); ++i) {
