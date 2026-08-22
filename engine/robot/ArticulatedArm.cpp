@@ -44,24 +44,33 @@ void ArticulatedArm::finalizeBuild() {
                                  ? s.linkInertia
                                  : btVector3(s.linkMass, s.linkMass, s.linkMass);
 
-        multiBody->setupRevolute(
-            i, s.linkMass, inertia, parentIndex,
-            s.rotParentToThis,
-            s.axis,
-            s.pivotInParent,
-            s.pivotInChild,
-            /*disableParentCollision*/ true);
+        if (s.jointType == "fixed") {
+            multiBody->setupFixed(
+                i, s.linkMass, inertia, parentIndex,
+                s.rotParentToThis,
+                s.pivotInParent,
+                s.pivotInChild);
+            motors.push_back(nullptr);
+        } else {
+            multiBody->setupRevolute(
+                i, s.linkMass, inertia, parentIndex,
+                s.rotParentToThis,
+                s.axis,
+                s.pivotInParent,
+                s.pivotInChild,
+                /*disableParentCollision*/ true);
 
-        if (s.lowerLimit <= s.upperLimit) {
-            auto* limit = new btMultiBodyJointLimitConstraint(multiBody, i, s.lowerLimit, s.upperLimit);
-            physicsWorld.raw()->addMultiBodyConstraint(limit);
-            ownedConstraints.push_back(limit);
+            if (s.lowerLimit <= s.upperLimit) {
+                auto* limit = new btMultiBodyJointLimitConstraint(multiBody, i, s.lowerLimit, s.upperLimit);
+                physicsWorld.raw()->addMultiBodyConstraint(limit);
+                ownedConstraints.push_back(limit);
+            }
+
+            auto* motor = new btMultiBodyJointMotor(multiBody, i, /*desiredVelocity*/ 0.0f, s.maxMotorForce);
+            physicsWorld.raw()->addMultiBodyConstraint(motor);
+            motors.push_back(motor);
+            ownedConstraints.push_back(motor);
         }
-
-        auto* motor = new btMultiBodyJointMotor(multiBody, i, /*desiredVelocity*/ 0.0f, s.maxMotorForce);
-        physicsWorld.raw()->addMultiBodyConstraint(motor);
-        motors.push_back(motor);
-        ownedConstraints.push_back(motor);
     }
 
     multiBody->finalizeMultiDof();
@@ -92,6 +101,7 @@ void ArticulatedArm::finalizeBuild() {
 
 void ArticulatedArm::setJointTargetVelocity(int jointIndex, float velocity) {
     if (!multiBody || jointIndex < 0 || jointIndex >= static_cast<int>(motors.size())) return;
+    if (motors[jointIndex] == nullptr) return;
     motors[jointIndex]->setVelocityTarget(velocity);
 }
 
@@ -102,7 +112,7 @@ void ArticulatedArm::reset() {
         multiBody->setJointVel(i, 0.0f);
     }
     for (auto* m : motors) {
-        m->setVelocityTarget(0.0f);
+        if (m) m->setVelocityTarget(0.0f);
     }
     multiBody->setBasePos(basePos);
     multiBody->setBaseWorldTransform(btTransform(btQuaternion::getIdentity(), basePos));

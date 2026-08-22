@@ -97,6 +97,7 @@ PYBIND11_MODULE(palletizer_core, m) {
     py::class_<JointSpec>(m, "JointSpec")
         .def(py::init<>())
         .def_readwrite("name", &JointSpec::name)
+        .def_readwrite("joint_type", &JointSpec::jointType)
         .def_readwrite("axis", &JointSpec::axis)
         .def_readwrite("rot_parent_to_this", &JointSpec::rotParentToThis)
         .def_readwrite("pivot_in_parent", &JointSpec::pivotInParent)

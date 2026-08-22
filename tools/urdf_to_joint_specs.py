@@ -10,16 +10,13 @@ nel giunto revolute successivo, accumulando le trasformazioni. Quelli fissi
 DOPO l'ultimo giunto revolute (flange, tool0) diventano un "tool_offset"
 separato — e' il punto in cui monteremo la ventosa/pinza.
 
-ATTENZIONE - approssimazione ancora presente: il tensore d'inerzia
-(ixx/iyy/izz) viene usato cosi' com'e' dall'URDF, ASSUMENDO che sia gia'
-espresso nel frame del link. In realta' l'URDF puo' specificare una
-rotazione anche per il frame inerziale (<inertial><origin rpy=...>,
-es. upper_arm_link ha rpy="0 1.5707963267948966 0") — quel caso NON e'
-gestito: ruotare correttamente un tensore diagonale produce in generale
-una matrice piena, che l'interfaccia di Bullet usata qui (btVector3
-diagonale) non rappresenta. La posizione del baricentro (com_offset) e'
-invece gestita correttamente qui sotto — era il problema piu' grosso e
-ora e' risolto.
+ATTENZIONE - approssimazione residua: la rotazione del tensore d'inerzia
+(rotate_inertia_diagonal) e' esatta per rotazioni attorno a un singolo
+asse principale (il caso dell'UR5), ma per rotazioni arbitrarie generiche
+un tensore ruotato puo' avere termini fuori diagonale che l'interfaccia
+di Bullet usata qui (btVector3 diagonale) non rappresenta — in quel caso
+usiamo comunque la diagonale ruotata come miglior approssimazione, con un
+warning a runtime se l'errore residuo e' significativo.
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -64,6 +61,31 @@ def quat_rotate_vec(q: tuple, v: tuple) -> tuple:
         vy + 2.0 * (w * uvy + uuvy),
         vz + 2.0 * (w * uvz + uuvz),
     )
+
+
+def quat_to_matrix(q: tuple) -> tuple:
+    x, y, z, w = q
+    return (
+        (1 - 2 * (y * y + z * z), 2 * (x * y - w * z), 2 * (x * z + w * y)),
+        (2 * (x * y + w * z), 1 - 2 * (x * x + z * z), 2 * (y * z - w * x)),
+        (2 * (x * z - w * y), 2 * (y * z + w * x), 1 - 2 * (x * x + y * y)),
+    )
+
+
+def rotate_inertia_diagonal(diag: tuple, rpy: tuple) -> tuple[tuple, float]:
+    if rpy == (0.0, 0.0, 0.0):
+        return diag, 0.0
+
+    q = quat_from_rpy(*rpy)
+    R = quat_to_matrix(q)
+    D = diag
+
+    def I_body(i, j):
+        return sum(R[i][k] * D[k] * R[j][k] for k in range(3))
+
+    new_diag = (I_body(0, 0), I_body(1, 1), I_body(2, 2))
+    off_diag_mag = max(abs(I_body(0, 1)), abs(I_body(0, 2)), abs(I_body(1, 2)))
+    return new_diag, off_diag_mag
 
 
 @dataclass
@@ -112,15 +134,20 @@ def build_joint_specs(robot: UrdfRobot) -> tuple[list[JointSpecData], dict]:
 
         link = robot.links.get(j.child)
         link_mass = link.mass if (link and link.mass > 0.0) else 1.0
-        link_inertia = link.inertia_diag if (link and any(link.inertia_diag)) else (0.05, 0.05, 0.05)
+        raw_inertia = link.inertia_diag if (link and any(link.inertia_diag)) else (0.05, 0.05, 0.05)
 
-        # FIX: pivotInParent/pivotInChild devono essere misurati dal vero
-        # BARICENTRO dei link, non dalla loro origine geometrica.
+        com_rpy = link.com_rpy if link else (0.0, 0.0, 0.0)
+        link_inertia, off_diag = rotate_inertia_diagonal(raw_inertia, com_rpy)
+        if off_diag > 1e-6:
+            print(f"[WARN] {j.child}: rotazione inerziale non gestibile con diagonale pura "
+                  f"(termine fuori diagonale residuo: {off_diag:.6f}) — uso comunque la "
+                  f"diagonale ruotata come approssimazione migliore disponibile.")
+
         parent_link = robot.links.get(j.parent)
         parent_com = parent_link.com_offset if parent_link else (0.0, 0.0, 0.0)
         child_com = link.com_offset if link else (0.0, 0.0, 0.0)
 
-        pivot_in_parent = tuple(p - c for p, c in zip(full.translation, parent_com))
+        pivot_in_parent = tuple(c - p for p, c in zip(full.translation, parent_com))
         pivot_in_child = child_com
 
         specs.append(JointSpecData(
@@ -169,7 +196,7 @@ if __name__ == "__main__":
 
     print(f"{len(specs)} giunti motorizzati trovati:")
     for s in specs:
-        print(f"  {s.name}: pivot_parent={tuple(round(v, 4) for v in s.pivot_in_parent)} "
-              f"pivot_child={tuple(round(v, 4) for v in s.pivot_in_child)} "
+        print(f"  {s.name}: inerzia={tuple(round(v, 5) for v in s.link_inertia)} "
+              f"pivot_parent={tuple(round(v, 4) for v in s.pivot_in_parent)} "
               f"limiti=[{s.lower_limit:.3f}, {s.upper_limit:.3f}]")
     print(f"\nOffset fino al tool (end-effector reale): {tool_offset}")

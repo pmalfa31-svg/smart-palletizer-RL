@@ -10,6 +10,7 @@
 
 struct JointSpec {
     std::string name;
+    std::string jointType = "revolute";
     btVector3 axis;
     btQuaternion rotParentToThis = btQuaternion::getIdentity();
     btVector3 pivotInParent;
@@ -37,7 +38,6 @@ public:
     btTransform getEndEffectorTransform() const;
     std::pair<btVector3, btQuaternion> getEndEffectorPose() const;
     int numLinks() const { return static_cast<int>(links.size()); }
-
     std::vector<float> getJointPositions() const;
 
 private:

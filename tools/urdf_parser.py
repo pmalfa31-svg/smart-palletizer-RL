@@ -38,6 +38,7 @@ class UrdfLink:
     mass: float = 0.0
     inertia_diag: tuple[float, float, float] = (0.0, 0.0, 0.0)
     com_offset: tuple[float, float, float] = (0.0, 0.0, 0.0)
+    com_rpy: tuple[float, float, float] = (0.0, 0.0, 0.0)
     visual_mesh: str | None = None
     collision_mesh: str | None = None
 
@@ -99,6 +100,7 @@ def parse_urdf(path: str) -> UrdfRobot:
             origin_el = inertial.find("origin")
             if origin_el is not None:
                 link.com_offset = _parse_floats(origin_el.get("xyz"), (0.0, 0.0, 0.0))
+                link.com_rpy = _parse_floats(origin_el.get("rpy"), (0.0, 0.0, 0.0))
 
         visual = link_el.find("visual/geometry/mesh")
         if visual is not None:
